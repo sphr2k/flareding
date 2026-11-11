@@ -232,7 +232,6 @@ Privileged bindings are never required during ordinary deployment:
 After Access secrets are deployed, a plain Worker code redeploy must not
 be assumed to revoke them. Use cf workers secrets delete for rollback.
 
-
 ## Cloudflare-managed Git deployments
 
 The existing `flareding-staging` Worker is connected to GitHub (`sphr2k/flareding`, branch `main`) through **Cloudflare Workers Builds**. Builds run `bun run build`, then deploy with `bun run deploy:staging`; Preview Builds are disabled, and the existing SQLite Durable Object is retained.
