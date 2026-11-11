@@ -31,6 +31,7 @@ for (const stream of [child.stdout, child.stderr]) {
   });
 }
 const created = [];
+const pageErrors = [];
 function stop() {
   try {
     if (process.platform !== "win32") process.kill(-child.pid, "SIGTERM");
@@ -73,6 +74,7 @@ try {
       title: `Synthetic bookmark ${i + 1}`,
       description: "Test document for Spectrum CardView and list navigation.",
       tag_names: i % 2 ? ["typescript", "docs"] : ["cloudflare", "sqlite"],
+      unread: i % 2 === 0,
     });
     if (response.status !== 201) throw new Error(`Synthetic seed failed: HTTP ${response.status}`);
     created.push((await response.json()).id);
@@ -80,7 +82,6 @@ try {
 
   browser = await chromium.launch({ headless: true, args: ["--no-sandbox"] });
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
-  const pageErrors = [];
   page.on("pageerror", (error) => pageErrors.push(error.message));
 
   await page.goto(origin, { waitUntil: "domcontentloaded" });
@@ -88,6 +89,14 @@ try {
   await page.getByRole("button", { name: "Anmelden" }).click();
   await page.getByRole("button", { name: "Listenansicht" }).waitFor();
   await page.getByText("Synthetic bookmark 1").first().waitFor();
+  await page.getByRole("tab", { name: "Ungelesen" }).click();
+  await page
+    .getByRole("tab", { name: "Ungelesen" })
+    .getAttribute("aria-selected")
+    .then((selected) => {
+      if (selected !== "true") throw Error("Unread tab did not activate");
+    });
+  await page.getByRole("tab", { name: "Alle" }).click();
 
   const cardCount = await page.locator('[role="gridcell"]').count();
   if (cardCount < 8) throw new Error(`Expected at least 8 CardView items, found ${cardCount}`);

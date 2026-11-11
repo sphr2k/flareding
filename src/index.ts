@@ -4,6 +4,7 @@ import { bookmarkRoutes } from "./api/bookmarks.js";
 import { authenticateToken, authError } from "./api/auth.js";
 import { handleSession, hasBrowserSession, isSameOriginMutation } from "./api/session.js";
 import type { Env } from "./env.js";
+import { accessMode, accessReady, handleAccessSession } from "./api/access.js";
 import { handlePinboardAdmin, isImportAdminPath } from "./import/admin-api.js";
 export { BookmarkDO } from "./worker/bookmarks.js";
 
@@ -20,16 +21,28 @@ const handler = new OpenAPIHandler(
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const path = new URL(request.url).pathname;
+    // Must remain outside Access-bypassed /api/*.
+    if (path === "/auth/access/session") return handleAccessSession(request, env);
     if (path.startsWith("/api/")) {
       if (isImportAdminPath(path)) return handlePinboardAdmin(request, env);
-      if (path === "/api/session/") return handleSession(request, env.API_TOKEN);
+      if (path === "/api/session/") {
+        return handleSession(request, env.API_TOKEN, {
+          accessMode: accessMode(env),
+          sessionSecret: accessReady(env) ? env.SESSION_SECRET : undefined,
+        });
+      }
       if (path !== "/api/health") {
         // External integrations use the original linkding token header.
         // The web UI instead receives a short-lived, HttpOnly signed session.
         if (request.headers.has("Authorization")) {
           const auth = await authenticateToken(request, env.API_TOKEN);
           if (auth !== "ok") return authError(auth);
-        } else if (await hasBrowserSession(request, env.API_TOKEN)) {
+        } else if (
+          await hasBrowserSession(
+            request,
+            accessMode(env) ? (accessReady(env) ? env.SESSION_SECRET : undefined) : env.API_TOKEN,
+          )
+        ) {
           // SameSite=Strict + explicit Origin validation for cookie-auth mutations.
           if (!isSameOriginMutation(request))
             return Response.json({ detail: "Forbidden." }, { status: 403 });

@@ -73,6 +73,16 @@ try {
   if (!ready) throw new Error("Timed out starting real local SQLite DO");
 
   expectStatus(await request("GET", "/api/bookmarks/", undefined, false), 401, "anonymous read");
+  const unconfiguredAccess = await fetch(origin + "/auth/access/session", {
+    method: "POST",
+    headers: { Origin: origin },
+  });
+  assert.equal(
+    unconfiguredAccess.status,
+    503,
+    "Access login must remain disabled without configured identity",
+  );
+
   const login = await fetch(origin + "/api/session/", {
     method: "POST",
     headers: { "Content-Type": "application/json", Origin: origin },
@@ -228,6 +238,18 @@ try {
     200,
     "patch",
   );
+  const exactTag = await request("GET", "/api/bookmarks/?tag=sqlite");
+  expectStatus(exactTag, 200, "index-assisted tag filter");
+  assert.ok(exactTag.body.results.some((bookmark) => bookmark.id === id));
+  const missingTag = await request("GET", "/api/bookmarks/?tag=does-not-exist");
+  expectStatus(missingTag, 200, "missing tag");
+  assert.equal(missingTag.body.count, 0);
+  const unreadOnly = await request("GET", "/api/bookmarks/?unread=true");
+  expectStatus(unreadOnly, 200, "unread collection");
+  assert.ok(unreadOnly.body.results.some((bookmark) => bookmark.id === id));
+  const explicitFalse = await request("GET", "/api/bookmarks/?unread=false");
+  expectStatus(explicitFalse, 200, "false unread must not filter");
+  assert.ok(explicitFalse.body.results.some((bookmark) => bookmark.id === id));
   const list = await request("GET", "/api/bookmarks/?q=Updated&limit=1");
   expectStatus(list, 200, "list");
   assert.ok(list.body.results.some((bookmark) => bookmark.id === id));
