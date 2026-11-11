@@ -1,0 +1,51 @@
+{
+  "name": "flareding",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "cf dev",
+    "build": "bun check && cf build",
+    "deploy:staging": "cf deploy --mode staging",
+    "typecheck": "bun check",
+    "db:generate": "drizzle-kit generate && bun scripts/prepare-migrations.ts",
+    "db:check": "drizzle-kit check",
+    "test": "vp test",
+    "lint": "vp lint",
+    "format": "vp fmt",
+    "format:check": "vp fmt --check",
+    "verify": "bun check && vp lint && vp fmt --check && vp test && cf build"
+  },
+  "dependencies": {
+    "@orpc/openapi": "2.0.0-beta.50",
+    "@orpc/server": "2.0.0-beta.50",
+    "@orpc/tanstack-query": "2.0.0-beta.50",
+    "@react-spectrum/s2": "1.8.2",
+    "@tanstack/react-query": "5.107.1",
+    "@tanstack/react-router": "1.170.46",
+    "drizzle-orm": "1.0.0-rc.5",
+    "react": "19.2.0",
+    "react-dom": "19.2.0",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@cloudflare/vite-plugin": "2.0.0-beta.v.14",
+    "@cloudflare/vitest-plugin": "1.7.0",
+    "@cloudflare/workers-types": "5.20261025.1",
+    "@types/node": "25.0.10",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "bun-types": "1.4.4",
+    "cf": "1.0.0-beta.29",
+    "drizzle-kit": "1.0.0-rc.5",
+    "miniflare": "5.20261110.0-beta",
+    "typescript": "7.0.2",
+    "unplugin-parcel-macros": "0.2.0",
+    "vite": "8.3.7",
+    "vite-plus": "1.5.1"
+  },
+  "overrides": {
+    "@jridgewell/sourcemap-codec": "1.6.0",
+    "vite": "npm:@voidzero-dev/vite-plus-core@1.5.1"
+  },
+  "packageManager": "bun@1.4.3"
+}
