@@ -13,6 +13,7 @@ import type {
   TagDTO,
 } from "../api/bookmark-contract.js";
 import type { Env } from "../env.js";
+import { safeIconPath } from "../shared/site-host.js";
 
 type BookmarkRow = typeof bookmarks.$inferSelect;
 type Db = ReturnType<typeof drizzle>;
@@ -32,7 +33,7 @@ function toLinkding(row: BookmarkRow, tagNames: string[]): BookmarkDTO {
     date_added: row.createdAt.toISOString(),
     date_modified: row.updatedAt.toISOString(),
     web_archive_snapshot_url: null,
-    favicon_url: null,
+    favicon_url: safeIconPath(row.url),
     preview_image_url: null,
   };
 }

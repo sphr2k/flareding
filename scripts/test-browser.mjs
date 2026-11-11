@@ -86,6 +86,26 @@ try {
   browser = await chromium.launch({ headless: true, args: ["--no-sandbox"] });
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
   page.on("pageerror", (error) => pageErrors.push(error.message));
+  // No remote DNS/HTTP in visual tests: icons are mocked per unique host.
+  const iconRequests = new Set();
+  const validPng = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScL8KQAAAABJRU5ErkJggg==",
+    "base64",
+  );
+  await page.route("**/api/site-icons/*", async (route) => {
+    const host = route.request().url().split("/api/site-icons/")[1]?.split("?")[0] ?? "";
+    iconRequests.add(host);
+    // Check error fallback for the synthetic second domain.
+    if (host === "example.com") {
+      await route.fulfill({ status: 404, body: "" });
+    } else {
+      await route.fulfill({
+        status: 200,
+        contentType: "image/png",
+        body: validPng,
+      });
+    }
+  });
 
   await page.goto(origin, { waitUntil: "domcontentloaded" });
   await page.getByLabel("API-Token").fill(token);
@@ -103,6 +123,16 @@ try {
 
   const cardCount = await page.locator('[role="gridcell"]').count();
   if (cardCount < 8) throw new Error(`Expected at least 8 CardView items, found ${cardCount}`);
+  const cardHeights = await page
+    .locator('[role="gridcell"]')
+    .evaluateAll((nodes) =>
+      nodes
+        .map((node) => Math.round(node.getBoundingClientRect().height))
+        .filter((height) => height > 0),
+    );
+  if (cardHeights.length && Math.max(...cardHeights) > 350) {
+    throw new Error("Bookmark CardView cards are too tall: " + Math.max(...cardHeights) + "px");
+  }
 
   await page.getByText("Liste", { exact: true }).click();
   const listCount = await page.locator('[role="row"]').count();
@@ -136,6 +166,12 @@ try {
     });
   }
 
+  const iconCount = await page.locator('img[src*="/api/site-icons/"]').count();
+  if (!iconCount)
+    throw new Error("Visible bookmarks did not render lazy same-origin favicon images");
+  if (!iconRequests.has("example.org"))
+    throw new Error("The browser did not lazily request a visible site icon");
+  if (iconRequests.size > 2) throw new Error("The icon resolver was not deduplicated by host");
   if (pageErrors.length) throw new Error(`Browser errors: ${pageErrors.length}`);
 
   console.log(

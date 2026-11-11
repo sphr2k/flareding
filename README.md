@@ -260,3 +260,48 @@ Tabs, optional tag filter and SegmentedControl.
 
 A second PR implements a bounded same-origin favicon resolver with
 positive/negative Cloudflare Cache API and strict SSRF controls.
+
+## Site icons (#21)
+
+The Worker provides an authenticated same-origin favicon endpoint at
+`GET /api/site-icons/{normalized-host}`. Bookmark REST payloads expose
+an absolute `favicon_url` compatible with linkding. The browser sends
+its existing HttpOnly session automatically; a regular linkding API client
+may use the `Authorization: Token` header. Anonymous image crawling is
+rejected before DNS or external HTTP requests.
+
+The resolver runs only for requested/visible icons, not at import, migration,
+or background update time. All expensive operations happen outside the
+SQLite Durable Object; **zero additional SQL reads or writes per favicon**.
+
+- The favicon key is the canonical host, not the individual bookmark URL.
+- Public DNS preflight checks both A and AAAA, following bounded CNAME
+  chains while rejecting private, loopback, link-local and reserved addresses.
+  Every redirect target goes through the same checks. DNS preflight alone
+  cannot absolutely eliminate DNS rebinding, hence the route also requires
+  application authentication and has a bounded request budget.
+- Bounded HTTPS home-page inspection prefers high-resolution `rel=icon`,
+  Apple touch icons and manifest icons, then falls back to `/favicon.ico`.
+  Remote HTML/manifest/image reads have strict content/size/time limits;
+  SVG and incorrectly typed/invalid image bytes are never served.
+- Explicit Cloudflare Cache API provides seven-day positive and twelve-hour
+  negative edge TTLs. Cache operations are best-effort, and a small in-isolate
+  per-isolate concurrency guard limits parallel crawls to 32. Remote fetch
+  promises are not shared across Cloudflare request contexts; the canonical
+  same-origin URL, browser image cache and edge Cache API deduplicate by host.
+- Cards lazy-load icons with a fixed 40px footprint; native Spectrum
+  ListView uses its own Image slot with a 32px asset. Both fall back
+  deterministically to the same site monogram and stable host-hash tone.
+- The resolver is designed to be safe for user-controlled URLs but does not
+  promise to prevent every possible DNS-rebinding attack. Review egress
+  controls if exposing the service to untrusted/multi-tenant users.
+
+Security/unit tests stub network fetch and cache (no third-party requests),
+and Chromium synthetic-data tests intercept icon paths. A separate real
+local-workerd smoke verified icon retrieval from public GitHub/Mozilla
+after correcting Cloudflare's unsupported `redirect: "error"` mode:
+use `redirect: "manual"` and explicitly reject redirects.
+
+Note: Under future Cloudflare Access enforcement, the Cache API availability
+is dependent on Access topology; the resolver safely falls back to uncached
+fetches if the edge cache is not available.

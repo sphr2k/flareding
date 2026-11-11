@@ -5,6 +5,7 @@ import {
   safeIconPath,
   siteMonogram,
   siteTone,
+  trustedSiteIconSrc,
 } from "../src/ui/lib/site-icon.js";
 
 describe("bookmark SiteIcon host identity and deterministic fallback", () => {
@@ -14,7 +15,7 @@ describe("bookmark SiteIcon host identity and deterministic fallback", () => {
     expect(a).toBe("example.com");
     expect(b).toBe(a);
     expect(siteTone(a!)).toBe(siteTone(b!));
-    expect(safeIconPath("https://www.example.com/a")).toBe("/site-icons/example.com");
+    expect(safeIconPath("https://www.example.com/a")).toBe("/api/site-icons/example.com");
   });
 
   it("generates inert deterministic local SVG assets without network requests", () => {
@@ -24,6 +25,21 @@ describe("bookmark SiteIcon host identity and deterministic fallback", () => {
     expect(a.startsWith("data:image/svg+xml;charset=utf-8,")).toBe(true);
     expect(decodeURIComponent(a)).toContain("EX");
     expect(decodeURIComponent(fallbackIconDataUrl("javascript:alert(1)"))).not.toContain("<script");
+  });
+
+  it("only accepts same-origin favicon image URLs", () => {
+    const origin = "https://flareding.example";
+    expect(trustedSiteIconSrc(origin + "/api/site-icons/github.com", origin)).toBe(
+      origin + "/api/site-icons/github.com",
+    );
+    expect(trustedSiteIconSrc("/api/site-icons/github.com", origin)).toBe(
+      origin + "/api/site-icons/github.com",
+    );
+    expect(
+      trustedSiteIconSrc("https://attacker.example/api/site-icons/github.com", origin),
+    ).toBeNull();
+    expect(trustedSiteIconSrc("javascript:alert(1)", origin)).toBeNull();
+    expect(trustedSiteIconSrc("/api/site-icons/github.com?u=bad", origin)).toBeNull();
   });
 
   it("denies non-HTTP(S) and invalid links", () => {

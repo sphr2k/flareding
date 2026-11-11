@@ -3,15 +3,8 @@
  * bookmark title or path. This is deterministic across CardView and ListView.
  * Do not fetch URL content or load remote assets from here.
  */
-export function normalizeSiteHost(url: string): string | null {
-  try {
-    const parsed = new URL(url);
-    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return null;
-    return parsed.hostname.toLowerCase().replace(/^www\./, "");
-  } catch {
-    return null;
-  }
-}
+import { normalizeSiteHost } from "../../shared/site-host.js";
+export { normalizeSiteHost, safeIconPath } from "../../shared/site-host.js";
 
 export function siteTone(host: string): number {
   let hash = 2166136261;
@@ -26,11 +19,6 @@ export function siteMonogram(host: string): string {
   const root = host.split(".")[0] || "?";
   const codepoints = [...root].filter((char) => /[a-z0-9]/i.test(char));
   return (codepoints.slice(0, 2).join("") || "?").toUpperCase();
-}
-
-export function safeIconPath(url: string): string | null {
-  const hostname = normalizeSiteHost(url);
-  return hostname ? `/site-icons/${encodeURIComponent(hostname)}` : null;
 }
 
 /**
@@ -49,4 +37,22 @@ export function fallbackIconDataUrl(url: string): string {
     `<text x="20" y="26" text-anchor="middle" font-size="15" font-weight="700" fill="#fff" font-family="Arial,sans-serif">${text}</text>` +
     "</svg>";
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+}
+
+/** Allow images only from the authenticated Same-Origin favicon endpoint. */
+export function trustedSiteIconSrc(candidate: string | null, appOrigin: string): string | null {
+  if (!candidate) return null;
+  try {
+    const url = new URL(candidate, appOrigin);
+    if (
+      url.origin !== new URL(appOrigin).origin ||
+      url.search ||
+      url.hash ||
+      !/^\/api\/site-icons\/[a-z0-9.-]+$/.test(url.pathname)
+    )
+      return null;
+    return url.href;
+  } catch {
+    return null;
+  }
 }

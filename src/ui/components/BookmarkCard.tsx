@@ -35,7 +35,7 @@ export function BookmarkCard({ bookmark, onToggleArchive, isPending = false }: P
             minWidth: 0,
           })}
         >
-          <SiteIcon url={bookmark.url} />
+          <SiteIcon url={bookmark.url} iconSrc={bookmark.favicon_url} />
           <div
             className={style({
               display: "flex",

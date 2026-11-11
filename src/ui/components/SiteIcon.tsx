@@ -1,6 +1,6 @@
 import { style } from "@react-spectrum/s2/style" with { type: "macro" };
 import { useEffect, useState } from "react";
-import { normalizeSiteHost, siteMonogram, siteTone } from "../lib/site-icon.js";
+import { normalizeSiteHost, siteMonogram, siteTone, trustedSiteIconSrc } from "../lib/site-icon.js";
 
 const tones = [
   style({ backgroundColor: "blue-100", color: "blue-900" }),
@@ -23,7 +23,7 @@ export function SiteIcon({ url, iconSrc, size = "normal" }: SiteIconProps) {
   const host = normalizeSiteHost(url);
   const [broken, setBroken] = useState(false);
   useEffect(() => setBroken(false), [iconSrc]);
-  const safeSrc = iconSrc?.startsWith("/site-icons/") ? iconSrc : null;
+  const safeSrc = trustedSiteIconSrc(iconSrc ?? null, window.location.origin);
   const tone = host ? siteTone(host) : 0;
   const dimension = size === "normal" ? 40 : 32;
 
