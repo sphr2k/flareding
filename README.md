@@ -217,3 +217,17 @@ identity providers. Access policies are managed separately through the
 `cf zero-trust` CLI. Roll out the bypass first and verify token clients,
 then enable UI Access/identity validation. Do not broadly allow everyone to
 authenticate into a bookmark application.
+
+### Safe environment-specific Cloudflare bindings
+
+Default and normal staging releases require only the existing API_TOKEN.
+Privileged bindings are never required during ordinary deployment:
+
+- staging-import mode is intended only for local import integration tests.
+- staging-access mode adds the Access JWT/session keys for a dedicated
+  owner-only pilot. Use it only after a specific Access bypass app has been
+  verified to preserve the original Token API.
+- staging mode keeps both privileged capabilities absent by default.
+
+After Access secrets are deployed, a plain Worker code redeploy must not
+be assumed to revoke them. Use cf workers secrets delete for rollback.
