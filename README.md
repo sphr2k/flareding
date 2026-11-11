@@ -239,3 +239,24 @@ The existing `flareding-staging` Worker is connected to GitHub (`sphr2k/flaredin
 Cloudflare Workers Builds determines the runtime from `.node-version` and Bun from `packageManager` in `package.json`. **Do not add `npm:cf` to `.tool-versions`**: the hosted image fails when trying to install that mise plugin. Locally, invoke `cf` via the pinned project `devDependency` or an explicitly selected `mise` tool.
 
 GitHub Actions continues to check TypeScript, lint, tests and real workerd before merges. Cloudflare then performs the actual staging deployment from `main`.
+
+## UI redesign (#21)
+
+The authenticated UI uses Adobe React Spectrum 2 exclusively. It has one
+compact AppHeader with brand, global SearchField, AddBookmark DialogTrigger,
+and secondary ActionMenu for logout, followed by a CollectionToolbar with native
+Tabs, optional tag filter and SegmentedControl.
+
+- Native CardView uses size XL to avoid dense 5-column desktop cards. Site
+  fallback is based on the canonical host, never the link path or title.
+- On mobile under 640px, automatically use the native Spectrum ListView; its
+  documented direct Image/Text/ActionMenu slots keep icon and title readable.
+- The first UI iteration generates deterministic, inert local site monograms;
+  it does not yet crawl URLs or make third-party icon requests.
+- Slash outside text inputs focuses global search; pressing n opens the
+  Add Bookmark dialog. Cancel/ESC restores focus through Spectrum semantics.
+- Chrome smoke exercises 360/768/1280/1920px with synthetic bookmarks,
+  verifies no horizontal overflow and writes ignored screenshots only.
+
+A second PR implements a bounded same-origin favicon resolver with
+positive/negative Cloudflare Cache API and strict SSRF controls.
