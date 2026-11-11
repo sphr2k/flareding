@@ -15,12 +15,16 @@ const localImportSecret = /^IMPORT_SECRET=(.+)$/m.exec(devVars)?.[1];
 const importSecret = localImportSecret ?? randomBytes(48).toString("base64url");
 const port = Number(process.env.FLAREDING_TEST_PORT ?? 8797);
 const origin = `http://127.0.0.1:${port}`;
-const child = spawn("cf", ["dev", "--", "--host", "127.0.0.1", "--port", String(port)], {
-  cwd: process.cwd(),
-  env: { ...process.env, API_TOKEN: token, IMPORT_SECRET: importSecret },
-  detached: process.platform !== "win32",
-  stdio: ["ignore", "pipe", "pipe"],
-});
+const child = spawn(
+  "cf",
+  ["dev", "--mode", "staging-import", "--", "--host", "127.0.0.1", "--port", String(port)],
+  {
+    cwd: process.cwd(),
+    env: { ...process.env, API_TOKEN: token, IMPORT_SECRET: importSecret },
+    detached: process.platform !== "win32",
+    stdio: ["ignore", "pipe", "pipe"],
+  },
+);
 let logs = "";
 for (const stream of [child.stdout, child.stderr]) {
   stream.setEncoding("utf8");
