@@ -14,7 +14,7 @@ const editable = bookmarkInsertSchema.pick({
 
 export const bookmarkCreate = editable
   .extend({
-    url: z.url().max(8192),
+    url: z.url({ protocol: /^https?$/ }).max(8192),
     is_archived: z.boolean().optional(),
     unread: z.boolean().optional(),
     shared: z.boolean().optional(),
@@ -25,7 +25,10 @@ export const bookmarkCreate = editable
 export const bookmarkPatch = bookmarkUpdateSchema
   .pick({ url: true, title: true, description: true, notes: true })
   .extend({
-    url: z.url().max(8192).optional(),
+    url: z
+      .url({ protocol: /^https?$/ })
+      .max(8192)
+      .optional(),
     is_archived: z.boolean().optional(),
     unread: z.boolean().optional(),
     shared: z.boolean().optional(),

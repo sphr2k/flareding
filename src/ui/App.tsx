@@ -1,4 +1,12 @@
 import { Button } from "@react-spectrum/s2/Button";
+import {
+  CardView,
+  Card,
+  Content as CardContent,
+  Text as CardText,
+  Footer,
+} from "@react-spectrum/s2/CardView";
+import { ActionMenu, MenuItem } from "@react-spectrum/s2/ActionMenu";
 import { InlineAlert, Heading, Content } from "@react-spectrum/s2/InlineAlert";
 import { Link } from "@react-spectrum/s2/Link";
 import { Provider } from "@react-spectrum/s2/Provider";
@@ -18,11 +26,17 @@ interface BookmarkPage {
   results: BookmarkDTO[];
 }
 
-async function getBookmarks(search: string, archived: boolean): Promise<BookmarkPage> {
+async function getBookmarks(
+  search: string,
+  archived: boolean,
+  offset: number,
+): Promise<BookmarkPage> {
   const url = new URL(
     archived ? "/api/bookmarks/archived/" : "/api/bookmarks/",
     window.location.origin,
   );
+  url.searchParams.set("limit", "60");
+  url.searchParams.set("offset", String(offset));
   if (search.trim()) url.searchParams.set("q", search.trim());
   const response = await fetch(url, { credentials: "same-origin" });
   if (!response.ok)
@@ -116,13 +130,15 @@ function BookmarkManager({ onLogout }: { onLogout: () => void }) {
   const cache = useQueryClient();
   const [search, setSearch] = useState("");
   const [archived, setArchived] = useState(false);
+  const [display, setDisplay] = useState<"cards" | "list">("cards");
+  const [offset, setOffset] = useState(0);
   const [adding, setAdding] = useState(false);
   const [url, setUrl] = useState("");
   const [title, setTitle] = useState("");
   const [tags, setTags] = useState("");
   const { data, isPending, error } = useQuery({
-    queryKey: ["bookmarks", search, archived],
-    queryFn: () => getBookmarks(search, archived),
+    queryKey: ["bookmarks", search, archived, offset],
+    queryFn: () => getBookmarks(search, archived, offset),
   });
   const create = useMutation({
     mutationFn: async () =>
@@ -168,13 +184,28 @@ function BookmarkManager({ onLogout }: { onLogout: () => void }) {
           label="Bookmarks durchsuchen"
           placeholder="Titel, URL oder Beschreibung"
           value={search}
-          onChange={setSearch}
+          onChange={(value) => {
+            setSearch(value);
+            setOffset(0);
+          }}
         />
         <Button variant="accent" onPress={() => setAdding(!adding)}>
           {adding ? "Abbrechen" : "Bookmark hinzufügen"}
         </Button>
-        <Button variant="secondary" onPress={() => setArchived(!archived)}>
+        <Button
+          variant="secondary"
+          onPress={() => {
+            setArchived(!archived);
+            setOffset(0);
+          }}
+        >
           {archived ? "Gespeicherte anzeigen" : "Archiv anzeigen"}
+        </Button>
+        <Button
+          variant="secondary"
+          onPress={() => setDisplay(display === "cards" ? "list" : "cards")}
+        >
+          {display === "cards" ? "Listenansicht" : "Kachelansicht"}
         </Button>
         <Button variant="secondary" onPress={onLogout}>
           Abmelden
@@ -226,69 +257,153 @@ function BookmarkManager({ onLogout }: { onLogout: () => void }) {
           <p className={style({ font: "detail", color: "gray-700", margin: 0 })}>
             {data.count} {archived ? "archivierte" : "gespeicherte"} Bookmarks
           </p>
-          {data.results.map((bookmark) => (
-            <article
-              key={bookmark.id}
-              className={style({
-                display: "flex",
-                flexDirection: "column",
-                gap: 12,
-                backgroundColor: "layer-1",
-                borderRadius: "lg",
-                padding: 20,
-              })}
+          {display === "cards" ? (
+            <CardView
+              aria-label="Gespeicherte Bookmarks"
+              layout="grid"
+              size="S"
+              density="compact"
+              variant="secondary"
+              items={data.results}
+              dependencies={[archived, archive.isPending]}
+              styles={style({ width: "full" })}
             >
-              <div
-                className={style({
-                  display: "flex",
-                  justifyContent: "space-between",
-                  gap: 12,
-                  flexWrap: "wrap",
-                })}
-              >
-                <div className={style({ display: "flex", flexDirection: "column", gap: 4 })}>
-                  <h2 className={style({ font: "heading-sm", margin: 0 })}>
-                    <Link href={bookmark.url} target="_blank" rel="noopener noreferrer">
-                      {bookmark.title || bookmark.url}
-                    </Link>
-                  </h2>
-                  <p className={style({ font: "detail", color: "gray-700", margin: 0 })}>
-                    {bookmark.url}
-                  </p>
-                </div>
-                <Button
-                  variant="secondary"
-                  onPress={() =>
-                    archive.mutate({ id: bookmark.id, isArchived: bookmark.is_archived })
-                  }
-                  isDisabled={archive.isPending}
+              {(bookmark) => {
+                let domain = "";
+                try {
+                  domain = new URL(bookmark.url).hostname;
+                } catch {
+                  domain = "Unbekannte Adresse";
+                }
+                const safe = /^https?:\/\//i.test(bookmark.url);
+                return (
+                  <Card
+                    id={bookmark.id}
+                    textValue={bookmark.title || bookmark.url}
+                    {...(safe
+                      ? { href: bookmark.url, target: "_blank", rel: "noopener noreferrer" }
+                      : {})}
+                  >
+                    <CardContent>
+                      <CardText slot="title">{bookmark.title || bookmark.url}</CardText>
+                      <ActionMenu
+                        onAction={(key) => {
+                          if (key === "archive")
+                            archive.mutate({
+                              id: bookmark.id,
+                              isArchived: bookmark.is_archived,
+                            });
+                        }}
+                      >
+                        <MenuItem id="archive">
+                          {bookmark.is_archived ? "Wiederherstellen" : "Archivieren"}
+                        </MenuItem>
+                      </ActionMenu>
+                      <CardText slot="description">
+                        {domain}
+                        {bookmark.description ? ` · ${bookmark.description.slice(0, 130)}` : ""}
+                      </CardText>
+                    </CardContent>
+                    <Footer>
+                      <span>
+                        {bookmark.tag_names.slice(0, 3).join(" · ")}
+                        {bookmark.tag_names.length > 3 ? ` +${bookmark.tag_names.length - 3}` : ""}
+                      </span>
+                    </Footer>
+                  </Card>
+                );
+              }}
+            </CardView>
+          ) : (
+            <div className={style({ display: "flex", flexDirection: "column", gap: 12 })}>
+              {data.results.map((bookmark) => (
+                <article
+                  key={bookmark.id}
+                  className={style({
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 12,
+                    backgroundColor: "layer-1",
+                    borderRadius: "lg",
+                    padding: 20,
+                  })}
                 >
-                  {bookmark.is_archived ? "Wiederherstellen" : "Archivieren"}
-                </Button>
-              </div>
-              {bookmark.description && (
-                <p className={style({ font: "body-sm", margin: 0 })}>{bookmark.description}</p>
-              )}
-              {bookmark.tag_names.length > 0 && (
-                <TagGroup
-                  label="Tags"
-                  items={bookmark.tag_names.map((name) => ({ id: name, name }))}
-                >
-                  {(item) => <Tag>{item.name}</Tag>}
-                </TagGroup>
-              )}
-            </article>
-          ))}
+                  <div
+                    className={style({
+                      display: "flex",
+                      justifyContent: "space-between",
+                      gap: 12,
+                      flexWrap: "wrap",
+                    })}
+                  >
+                    <div className={style({ display: "flex", flexDirection: "column", gap: 4 })}>
+                      <h2 className={style({ font: "heading-sm", margin: 0 })}>
+                        <Link href={bookmark.url} target="_blank" rel="noopener noreferrer">
+                          {bookmark.title || bookmark.url}
+                        </Link>
+                      </h2>
+                      <p className={style({ font: "detail", color: "gray-700", margin: 0 })}>
+                        {bookmark.url}
+                      </p>
+                    </div>
+                    <Button
+                      variant="secondary"
+                      onPress={() =>
+                        archive.mutate({ id: bookmark.id, isArchived: bookmark.is_archived })
+                      }
+                      isDisabled={archive.isPending}
+                    >
+                      {bookmark.is_archived ? "Wiederherstellen" : "Archivieren"}
+                    </Button>
+                  </div>
+                  {bookmark.description && (
+                    <p className={style({ font: "body-sm", margin: 0 })}>{bookmark.description}</p>
+                  )}
+                  {bookmark.tag_names.length > 0 && (
+                    <TagGroup
+                      label="Tags"
+                      items={bookmark.tag_names.map((name) => ({ id: name, name }))}
+                    >
+                      {(item) => <Tag>{item.name}</Tag>}
+                    </TagGroup>
+                  )}
+                </article>
+              ))}
+            </div>
+          )}
           {data.count === 0 && (
             <InlineAlert variant="informative" fillStyle="subtleFill">
               <Heading>Keine Bookmarks gefunden</Heading>
               <Content>Füge einen Link hinzu oder ändere deine Suchanfrage.</Content>
             </InlineAlert>
           )}
-          {data.next && (
-            <p className={style({ font: "detail", color: "gray-700" })}>
-              Weitere Einträge sind über die paginierte API verfügbar.
-            </p>
+          {(offset > 0 || data.next) && (
+            <div
+              className={style({
+                display: "flex",
+                gap: 12,
+                alignItems: "center",
+                flexWrap: "wrap",
+              })}
+            >
+              <Button
+                variant="secondary"
+                isDisabled={offset === 0}
+                onPress={() => setOffset(Math.max(0, offset - 60))}
+              >
+                Zurück
+              </Button>
+              <span className={style({ font: "detail", color: "gray-700" })}>
+                {offset + 1}–{Math.min(offset + 60, data.count)} von {data.count}
+              </span>
+              <Button
+                variant="secondary"
+                isDisabled={!data.next}
+                onPress={() => setOffset(offset + 60)}
+              >
+                Weiter
+              </Button>
+            </div>
           )}
         </section>
       )}
