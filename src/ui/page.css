@@ -1,0 +1,15 @@
+/* Only document/root geometry belongs here. All component styling uses Spectrum 2 tokens. */
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+html,
+body {
+  margin: 0;
+}
+
+#root {
+  min-height: 100dvh;
+}

@@ -12,13 +12,15 @@ import { style } from "@react-spectrum/s2/style" with { type: "macro" };
  */
 export function App() {
   return (
-    <Provider locale="de-DE" colorScheme="dark" background="base">
+    <Provider locale="de-DE" colorScheme="dark">
       <div
         className={style({
           display: "flex",
           flexDirection: "column",
           gap: 32,
           padding: 32,
+          minHeight: "100dvh",
+          boxSizing: "border-box",
         })}
       >
         <header
@@ -30,7 +32,7 @@ export function App() {
             justifyContent: "space-between",
           })}
         >
-          <strong className={style({ fontSize: "heading-xl" })}>flareding</strong>
+          <strong className={style({ font: "heading-xl" })}>flareding</strong>
           <StatusLight variant="neutral">Privater Bookmark-Dienst</StatusLight>
         </header>
         <main
