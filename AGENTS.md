@@ -40,3 +40,15 @@ If Spectrum 2 genuinely lacks a needed capability, explain and document the exce
 - GitHub `main` triggers Cloudflare-managed Builds for the existing `flareding-staging` Worker.
 - Never reimport private bookmarks or recreate the Durable Object as part of a UI change.
 - Never commit API tokens, session secrets, private exports or screenshots showing personal bookmarks.
+
+## Approved Card color exception
+
+Bookmark cards may use a favicon-derived background-image gradient through
+`Card.UNSAFE_style`, because Spectrum 2 has no gradient API. Keep the accent at
+7% opacity, fading to transparent over the native Spectrum surface. Do not
+replace the native background color, hover/focus states, borders or shadows.
+Favicons retain their original colors; monogram fallbacks use low-saturation surfaces from the same domain palette.
+
+Favicon accent takes precedence over domain hash: chromatic icons provide the hue,
+monochrome icons remain neutral, and missing/failed icons use the domain hash.
+Extraction uses a 16x16 client canvas and a per-host memory cache only.

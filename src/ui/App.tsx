@@ -7,8 +7,10 @@ import { TextField, type TextFieldRef } from "@react-spectrum/s2/TextField";
 import { style } from "@react-spectrum/s2/style" with { type: "macro" };
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { CollectionNavigation } from "./components/CollectionNavigation.js";
 import { AppHeader } from "./components/AppHeader.js";
 import { CollectionToolbar, type DisplayMode } from "./components/CollectionToolbar.js";
+import { BookmarkDialog } from "./components/BookmarkDialog.js";
 import { BookmarkCard } from "./components/BookmarkCard.js";
 import { BookmarkList } from "./components/BookmarkList.js";
 import type { BookmarkDTO } from "../api/bookmark-contract.js";
@@ -48,9 +50,7 @@ async function getBookmarks(
   if (tag.trim()) url.searchParams.set("tag", tag.trim());
   const response = await fetch(url, { credentials: "same-origin" });
   if (!response.ok)
-    throw new Error(
-      response.status === 401 ? "Sitzung abgelaufen" : "Bookmarks konnten nicht geladen werden",
-    );
+    throw new Error(response.status === 401 ? "Session expired" : "Could not load bookmarks");
   return response.json() as Promise<BookmarkPage>;
 }
 
@@ -90,13 +90,13 @@ function Login({ onLogin }: { onLogin: () => void }) {
       if (!result.ok)
         throw new Error(
           result.status === 503
-            ? "Für diese Instanz ist noch kein Zugang eingerichtet."
-            : "Token ungültig.",
+            ? "Access has not been configured for this instance."
+            : "Invalid token.",
         );
       setToken(""); // The API token is never persisted in browser storage.
       onLogin();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Anmeldung fehlgeschlagen.");
+      setError(cause instanceof Error ? cause.message : "Sign-in failed.");
     } finally {
       setBusy(false);
     }
@@ -104,29 +104,29 @@ function Login({ onLogin }: { onLogin: () => void }) {
 
   return (
     <main className={style({ display: "flex", flexDirection: "column", gap: 20, maxWidth: 440 })}>
-      <h1 className={style({ font: "heading-2xl", margin: 0 })}>Deine Bookmarks.</h1>
+      <h1 className={style({ font: "heading-2xl", margin: 0 })}>Your bookmarks.</h1>
       <p className={style({ font: "body", color: "gray-700", margin: 0 })}>
-        Melde dich mit deinem linkding-kompatiblen API-Token an.
+        Sign in with your linkding-compatible API token.
       </p>
       <form
         onSubmit={login}
         className={style({ display: "flex", flexDirection: "column", gap: 16 })}
       >
         <TextField
-          label="API-Token"
+          label="API token"
           type="password"
           value={token}
           onChange={setToken}
-          placeholder="Dein API-Token"
+          placeholder="Your API token"
           isRequired
         />
         <Button type="submit" variant="accent" isPending={busy} isDisabled={!token.trim()}>
-          Anmelden
+          Sign in
         </Button>
       </form>
       {error && (
         <InlineAlert variant="negative">
-          <Heading>Anmeldung fehlgeschlagen</Heading>
+          <Heading>Sign-in failed</Heading>
           <Content>{error}</Content>
         </InlineAlert>
       )}
@@ -143,11 +143,11 @@ function BookmarkManager({ onLogout }: { onLogout: () => void }) {
   const debouncedSearch = useDebouncedValue(search);
   const debouncedTag = useDebouncedValue(tagFilter);
   const [display, setDisplay] = useState<DisplayMode>("cards");
-  const [isNarrow, setNarrow] = useState(false);
+  const [isNarrow, setNarrow] = useState(() => window.matchMedia("(max-width: 767px)").matches);
   useEffect(() => {
-    // Spectrum CardView has a native minimum two-column grid. Below 640px,
+    // Spectrum CardView has a native minimum two-column grid. Below 768px,
     // ListView keeps links readable without overriding CardView internals.
-    const media = window.matchMedia("(max-width: 640px)");
+    const media = window.matchMedia("(max-width: 767px)");
     const sync = () => setNarrow(media.matches);
     sync();
     media.addEventListener("change", sync);
@@ -156,6 +156,7 @@ function BookmarkManager({ onLogout }: { onLogout: () => void }) {
   const activeDisplay = isNarrow ? "list" : display;
   const [offset, setOffset] = useState(0);
   const [adding, setAdding] = useState(false);
+  const [editing, setEditing] = useState<BookmarkDTO | null>(null);
 
   const { data, isPending, error } = useQuery({
     queryKey: ["bookmarks", debouncedSearch, view, debouncedTag, offset],
@@ -163,13 +164,6 @@ function BookmarkManager({ onLogout }: { onLogout: () => void }) {
     staleTime: 15_000,
   });
 
-  const create = useMutation({
-    mutationFn: async (input: { url: string; title: string; tag_names: string[] }) =>
-      sendBookmark("POST", "/api/bookmarks/", input),
-    onSuccess: async () => {
-      await cache.invalidateQueries({ queryKey: ["bookmarks"] });
-    },
-  });
   const archive = useMutation({
     mutationFn: async (bookmark: BookmarkDTO) =>
       sendBookmark(
@@ -203,124 +197,177 @@ function BookmarkManager({ onLogout }: { onLogout: () => void }) {
 
   return (
     <>
-      <AppHeader
-        search={search}
-        onSearchChange={(value) => {
-          setSearch(value);
-          setOffset(0);
-        }}
-        searchRef={searchRef}
-        isAddOpen={adding}
-        onAddOpenChange={setAdding}
-        onCreate={async (input) => {
-          await create.mutateAsync(input);
-        }}
-        onLogout={onLogout}
-      />
-      <main
-        className={style({
-          display: "flex",
-          flexDirection: "column",
-          gap: 20,
-          width: "full",
-          flexGrow: 1,
-        })}
-      >
-        <CollectionToolbar
-          view={view}
-          onViewChange={(next) => {
-            setView(next);
-            setOffset(0);
+      {(editing || adding) && (
+        <BookmarkDialog
+          key={editing?.id ?? "new"}
+          bookmark={editing ?? undefined}
+          onClose={() => {
+            setEditing(null);
+            setAdding(false);
           }}
-          display={activeDisplay}
-          isNarrow={isNarrow}
-          onDisplayChange={setDisplay}
-          count={data?.count}
-          tagFilter={tagFilter}
-          onTagFilterChange={(value) => {
-            setTagFilter(value);
-            setOffset(0);
+          onSave={async (input) => {
+            await sendBookmark(
+              editing ? "PATCH" : "POST",
+              editing ? `/api/bookmarks/${editing.id}/` : "/api/bookmarks/",
+              { ...input },
+            );
+            await cache.invalidateQueries({ queryKey: ["bookmarks"] });
+            await cache.invalidateQueries({ queryKey: ["tags"] });
           }}
         />
-        {error && (
-          <InlineAlert variant="negative">
-            <Heading>Bookmarks konnten nicht geladen werden</Heading>
-            <Content>{error.message}</Content>
-          </InlineAlert>
+      )}
+      <div
+        className={style({
+          display: "grid",
+          gridTemplateAreas: {
+            default: ["toolbar", "content"],
+            "@media (min-width: 768px)": ["toolbar toolbar", "sidebar content"],
+          },
+          gridTemplateColumns: {
+            default: ["minmax(0, 1fr)"],
+            "@media (min-width: 768px)": ["auto", "minmax(0, 1fr)"],
+          },
+          gridTemplateRows: ["auto", "minmax(0, 1fr)"],
+          height: "100dvh",
+          backgroundColor: "layer-1",
+          overflow: "clip",
+        })}
+      >
+        <AppHeader
+          search={search}
+          onSearchChange={(value) => {
+            setSearch(value);
+            setOffset(0);
+          }}
+          searchRef={searchRef}
+          onAddOpenChange={setAdding}
+          onLogout={onLogout}
+          isNarrow={isNarrow}
+        />
+        {!isNarrow && (
+          <CollectionNavigation
+            view={view}
+            onViewChange={(next) => {
+              setView(next);
+              setOffset(0);
+            }}
+            onAdd={() => setAdding(true)}
+          />
         )}
-        {isPending && <StatusLight variant="informative">Lade Bookmarks …</StatusLight>}
-        {data && (
-          <section
-            aria-label="Bookmark-Sammlung"
-            className={style({
-              display: "flex",
-              flexDirection: "column",
-              gap: 16,
-              width: "full",
-            })}
-          >
-            {data.count === 0 ? (
-              <InlineAlert variant="informative" fillStyle="subtleFill">
-                <Heading>Keine Bookmarks gefunden</Heading>
-                <Content>Suchbegriff oder Filter ändern oder einen Bookmark hinzufügen.</Content>
-              </InlineAlert>
-            ) : activeDisplay === "cards" ? (
-              <CardView
-                aria-label="Bookmark-Kacheln"
-                layout="waterfall"
-                size="XL"
-                density="compact"
-                variant="secondary"
-                items={data.results}
-                dependencies={[view, archive.isPending]}
-                styles={style({ width: "full" })}
-              >
-                {(bookmark) => (
-                  <BookmarkCard
-                    bookmark={bookmark}
-                    onToggleArchive={(item) => archive.mutate(item)}
-                    isPending={archive.isPending}
-                  />
-                )}
-              </CardView>
-            ) : (
-              <BookmarkList
-                bookmarks={data.results}
-                onToggleArchive={(item) => archive.mutate(item)}
-                isPending={archive.isPending}
-              />
-            )}
-            {(offset > 0 || data.next) && (
-              <div
-                className={style({
-                  display: "flex",
-                  gap: 12,
-                  alignItems: "center",
-                  flexWrap: "wrap",
-                })}
-              >
-                <Button
+        <main
+          className={style({
+            display: "flex",
+            flexDirection: "column",
+            gap: 20,
+            gridArea: "content",
+            minWidth: 0,
+            minHeight: 0,
+            overflow: "auto",
+            padding: 20,
+            backgroundColor: "base",
+            borderTopRadius: "xl",
+            boxSizing: "border-box",
+          })}
+        >
+          <CollectionToolbar
+            view={view}
+            onViewChange={(next) => {
+              setView(next);
+              setOffset(0);
+            }}
+            display={activeDisplay}
+            isNarrow={isNarrow}
+            onDisplayChange={setDisplay}
+            count={data?.count}
+            tagFilter={tagFilter}
+            onTagFilterChange={(value) => {
+              setTagFilter(value);
+              setOffset(0);
+            }}
+          />
+          {error && (
+            <InlineAlert variant="negative">
+              <Heading>Could not load bookmarks</Heading>
+              <Content>{error.message}</Content>
+            </InlineAlert>
+          )}
+          {isPending && <StatusLight variant="informative">Loading bookmarks…</StatusLight>}
+          {data && (
+            <section
+              aria-label="Bookmark collection"
+              className={style({
+                display: "flex",
+                flexDirection: "column",
+                gap: 16,
+                width: "full",
+              })}
+            >
+              {data.count === 0 ? (
+                <InlineAlert variant="informative" fillStyle="subtleFill">
+                  <Heading>No bookmarks found</Heading>
+                  <Content>Change your search or filters, or add a bookmark.</Content>
+                </InlineAlert>
+              ) : activeDisplay === "cards" ? (
+                <CardView
+                  aria-label="Bookmark cards"
+                  layout="waterfall"
+                  size="L"
+                  density="compact"
                   variant="secondary"
-                  isDisabled={offset === 0}
-                  onPress={() => setOffset(Math.max(0, offset - 60))}
+                  items={data.results}
+                  dependencies={[view, archive.isPending]}
+                  // Adobe Photos example offsets the native CardView gutter via its public styles prop.
+                  styles={style({ marginX: -16, alignSelf: "stretch" })}
                 >
-                  Zurück
-                </Button>
-                <span className={style({ font: "detail", color: "gray-700" })}>
-                  {offset + 1}–{Math.min(offset + 60, data.count)} von {data.count}
-                </span>
-                <Button
-                  variant="secondary"
-                  isDisabled={!data.next}
-                  onPress={() => setOffset(offset + 60)}
+                  {(bookmark) => (
+                    <BookmarkCard
+                      bookmark={bookmark}
+                      onEdit={setEditing}
+                      onToggleArchive={(item) => archive.mutate(item)}
+                      isPending={archive.isPending}
+                    />
+                  )}
+                </CardView>
+              ) : (
+                <BookmarkList
+                  bookmarks={data.results}
+                  onEdit={setEditing}
+                  onToggleArchive={(item) => archive.mutate(item)}
+                  isPending={archive.isPending}
+                />
+              )}
+              {(offset > 0 || data.next) && (
+                <div
+                  className={style({
+                    display: "flex",
+                    gap: 12,
+                    alignItems: "center",
+                    flexWrap: "wrap",
+                  })}
                 >
-                  Weiter
-                </Button>
-              </div>
-            )}
-          </section>
-        )}
-      </main>
+                  <Button
+                    variant="secondary"
+                    isDisabled={offset === 0}
+                    onPress={() => setOffset(Math.max(0, offset - 60))}
+                  >
+                    Previous
+                  </Button>
+                  <span className={style({ font: "detail", color: "gray-700" })}>
+                    {offset + 1}–{Math.min(offset + 60, data.count)} of {data.count}
+                  </span>
+                  <Button
+                    variant="secondary"
+                    isDisabled={!data.next}
+                    onPress={() => setOffset(offset + 60)}
+                  >
+                    Next
+                  </Button>
+                </div>
+              )}
+            </section>
+          )}
+        </main>
+      </div>
     </>
   );
 }
@@ -358,7 +405,7 @@ export function App() {
         });
         if (!active) return;
         if (!exchange.ok) {
-          setAccessError("Cloudflare Access konnte die Anmeldung nicht bestätigen.");
+          setAccessError("Cloudflare Access could not verify your sign-in.");
           setAuthenticated(false);
           return;
         }
@@ -382,16 +429,18 @@ export function App() {
   }
 
   return (
-    <Provider locale="de-DE" colorScheme="dark">
+    <Provider locale="en-US" colorScheme="dark">
       <div
-        className={style({
-          display: "flex",
-          flexDirection: "column",
-          gap: 16,
-          padding: 24,
-          minHeight: "100dvh",
-          boxSizing: "border-box",
-        })}
+        className={[
+          style({
+            display: "flex",
+            flexDirection: "column",
+            gap: 16,
+            minHeight: "100dvh",
+            boxSizing: "border-box",
+          }),
+          authenticated !== true ? style({ padding: 16 }) : "",
+        ].join(" ")}
       >
         {authenticated !== true && (
           <header
@@ -406,7 +455,7 @@ export function App() {
           </header>
         )}
         {authenticated === null ? (
-          <StatusLight variant="informative">Sitzung wird geprüft …</StatusLight>
+          <StatusLight variant="informative">Checking session…</StatusLight>
         ) : authenticated ? (
           <BookmarkManager onLogout={logout} />
         ) : loginMode === "access" ? (
@@ -415,13 +464,13 @@ export function App() {
           >
             <h1 className={style({ font: "heading-xl" })}>Cloudflare Access</h1>
             <p className={style({ font: "body", color: "gray-700" })}>
-              {accessError || "Die Anmeldung über Cloudflare Access ist erforderlich."}
+              {accessError || "Sign in with Cloudflare Access to continue."}
             </p>
             <Button
               variant="accent"
               onPress={() => window.location.assign("/cdn-cgi/access/login")}
             >
-              Über Cloudflare anmelden
+              Sign in with Cloudflare
             </Button>
           </main>
         ) : (

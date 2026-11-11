@@ -279,6 +279,13 @@ try {
   expectStatus(tagList, 200, "tags list");
   assert.ok(tagList.body.results.some((tag) => tag.name === "sqlite"));
 
+  const filteredTags = await request("GET", "/api/tags/?q=SQLITE&limit=1");
+  expectStatus(filteredTags, 200, "filtered tags");
+  assert.equal(filteredTags.body.count, 1);
+  assert.equal(filteredTags.body.results[0].name, "sqlite");
+  const literalTags = await request("GET", "/api/tags/?q=%25_no_matching_tag");
+  assert.equal(literalTags.body.count, 0);
+
   expectStatus(await request("POST", `/api/bookmarks/${id}/archive/`), 200, "archive");
   const archived = await request("GET", "/api/bookmarks/archived/");
   expectStatus(archived, 200, "archived list");

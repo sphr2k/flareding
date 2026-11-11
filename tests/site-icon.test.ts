@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 import {
+  getSiteColor,
   fallbackIconDataUrl,
   normalizeSiteHost,
   safeIconPath,
@@ -48,10 +49,16 @@ describe("bookmark SiteIcon host identity and deterministic fallback", () => {
     expect(normalizeSiteHost("not a link")).toBeNull();
   });
 
+  it("normalizes hostnames into the nine curated color families", () => {
+    expect(getSiteColor(" WWW.Example.COM. ")).toEqual(getSiteColor("example.com"));
+    const colors = new Set(Array.from({ length: 200 }, (_, i) => getSiteColor(`site${i}.org`).hue));
+    expect([...colors].sort((a, b) => a - b)).toEqual([5, 40, 85, 140, 170, 190, 215, 270, 320]);
+  });
+
   it("gives a stable bounded palette and concise site monogram", () => {
     expect(siteTone("www.example.com")).toBe(siteTone("www.example.com"));
     expect(siteTone("example.com")).toBeGreaterThanOrEqual(0);
-    expect(siteTone("example.com")).toBeLessThan(6);
+    expect(siteTone("example.com")).toBeLessThan(9);
     expect(siteMonogram("github.com")).toBe("GI");
     expect(siteMonogram("")).toBe("?");
   });

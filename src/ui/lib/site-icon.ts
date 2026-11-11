@@ -8,11 +8,15 @@ export { normalizeSiteHost, safeIconPath } from "../../shared/site-host.js";
 
 export function siteTone(host: string): number {
   let hash = 2166136261;
-  for (const char of host) {
+  for (const char of host
+    .trim()
+    .toLowerCase()
+    .replace(/^www\./, "")
+    .replace(/\.$/, "")) {
     hash ^= char.codePointAt(0)!;
     hash = Math.imul(hash, 16777619);
   }
-  return (hash >>> 0) % 6;
+  return (hash >>> 0) % 9;
 }
 
 export function siteMonogram(host: string): string {
@@ -23,13 +27,12 @@ export function siteMonogram(host: string): string {
 
 /**
  * Inert, self-contained SVG for native Spectrum ListView's direct Image slot.
- * Colors are selected from a small, contrast-checked dark palette; host
+ * Colors use the same restrained domain palette as CardView; host
  * monograms are strictly alphanumeric and cannot inject markup.
  */
 export function fallbackIconDataUrl(url: string): string {
   const host = normalizeSiteHost(url) ?? "?";
-  const backgrounds = ["#21416a", "#453069", "#1f4a3e", "#683b20", "#174a50", "#663151"];
-  const bg = backgrounds[siteTone(host)];
+  const bg = `hsl(${getSiteColor(host).hue} 10% 20%)`;
   const text = siteMonogram(host);
   const svg =
     `<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 40 40">` +
@@ -55,4 +58,27 @@ export function trustedSiteIconSrc(candidate: string | null, appOrigin: string):
   } catch {
     return null;
   }
+}
+
+/** Curated, low-saturation domain palette shared by every bookmark view. */
+const siteColors = [
+  { name: "Blue", hue: 215 },
+  { name: "Cyan", hue: 190 },
+  { name: "Teal", hue: 170 },
+  { name: "Green", hue: 140 },
+  { name: "Olive", hue: 85 },
+  { name: "Amber", hue: 40 },
+  { name: "Red", hue: 5 },
+  { name: "Purple", hue: 270 },
+  { name: "Magenta", hue: 320 },
+] as const;
+
+export function getSiteColor(hostname: string) {
+  return siteColors[siteTone(hostname)];
+}
+
+/** Approved S2 exception: transparent wash preserves native surface/states. */
+export function siteCardBackground(host: string, accent?: number | null): string {
+  if (accent === null) return "none";
+  return `linear-gradient(135deg, hsl(${accent ?? getSiteColor(host).hue} 35% 60% / 0.07), transparent)`;
 }

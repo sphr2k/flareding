@@ -251,15 +251,20 @@ export class BookmarkDO extends DurableObject<Env> {
   async listTags(options: {
     limit: number;
     offset: number;
+    q?: string;
   }): Promise<{ count: number; results: TagDTO[] }> {
+    const term = options.q?.trim();
+    const filter = term ? sql`instr(lower(${tags.name}), lower(${term})) > 0` : undefined;
     const total =
       this.db
         .select({ count: sql<number>`count(*)` })
         .from(tags)
+        .where(filter)
         .get()?.count ?? 0;
     const found = this.db
       .select()
       .from(tags)
+      .where(filter)
       .orderBy(tags.name)
       .limit(options.limit)
       .offset(options.offset)

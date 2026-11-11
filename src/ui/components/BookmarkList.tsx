@@ -8,15 +8,16 @@ import { fallbackIconDataUrl, normalizeSiteHost, trustedSiteIconSrc } from "../l
 
 interface Props {
   bookmarks: BookmarkDTO[];
+  onEdit: (bookmark: BookmarkDTO) => void;
   onToggleArchive: (bookmark: BookmarkDTO) => void;
   isPending?: boolean;
 }
 
 /** Native Spectrum ListView instead of a tall parallel set of custom cards. */
-export function BookmarkList({ bookmarks, onToggleArchive, isPending = false }: Props) {
+export function BookmarkList({ bookmarks, onEdit, onToggleArchive, isPending = false }: Props) {
   return (
     <ListView
-      aria-label="Bookmarks als Liste"
+      aria-label="Bookmark list"
       items={bookmarks}
       dependencies={[isPending]}
       selectionMode="none"
@@ -48,20 +49,20 @@ export function BookmarkList({ bookmarks, onToggleArchive, isPending = false }: 
           />
           <Text>{bookmark.title || bookmark.url}</Text>
           <Text slot="description">
-            {normalizeSiteHost(bookmark.url) ?? "Unbekannte Website"}
+            {normalizeSiteHost(bookmark.url) ?? "Unknown website"}
             {bookmark.description ? ` · ${bookmark.description.slice(0, 145)}` : ""}
           </Text>
           <ActionMenu
             size="S"
-            aria-label={`Aktionen für ${bookmark.title || bookmark.url}`}
+            aria-label={`Actions for ${bookmark.title || bookmark.url}`}
             isDisabled={isPending}
             onAction={(key) => {
+              if (key === "edit") onEdit(bookmark);
               if (key === "archive") onToggleArchive(bookmark);
             }}
           >
-            <MenuItem id="archive">
-              {bookmark.is_archived ? "Wiederherstellen" : "Archivieren"}
-            </MenuItem>
+            <MenuItem id="edit">Edit</MenuItem>
+            <MenuItem id="archive">{bookmark.is_archived ? "Unarchive" : "Archive"}</MenuItem>
           </ActionMenu>
         </ListViewItem>
       )}

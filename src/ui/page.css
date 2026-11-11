@@ -13,26 +13,3 @@ body {
 #root {
   min-height: 100dvh;
 }
-
-/* App-shell layout only. Typography, colors and controls are native Spectrum 2. */
-.flareding-app-header {
-  display: grid;
-  grid-template-columns: auto minmax(15rem, 1fr) auto auto;
-  align-items: center;
-  column-gap: 16px;
-  row-gap: 12px;
-}
-.flareding-header-search {
-  min-width: 0;
-  max-width: 48rem;
-}
-@media (max-width: 720px) {
-  .flareding-app-header {
-    grid-template-columns: 1fr auto auto;
-  }
-  .flareding-header-search {
-    grid-column: 1 / -1;
-    grid-row: 2;
-    max-width: none;
-  }
-}

@@ -107,16 +107,21 @@ uploaded to Staging.** Track it in #13.
 
 ## Spectrum 2 UI concept
 
-Design follows the official Spectrum 2 CardView collection pattern:
+The English UI follows Adobe's Spectrum 2 app and CardView examples:
 
-- Default: `CardView` / `Card`, compact S grid, showing title, domain,
-  short description, a few tags and an ActionMenu.
-- Alternate: compact list view. Switch using the native Spectrum controls.
-- Native keyboard and collection semantics instead of custom card interactions.
-- 60-item server-side pagination: never download all 8,245 bookmarks to render
-  the grid; searchable tags and richer facets will be incremental.
-- Upcoming: SideNav, tag facet search, native multi-selection with ActionBar and
-  responsive details panel. Track #15.
+- A viewport-filling app bar and collection rail surround a scrolling content
+  surface. Mobile uses collection tabs and keeps Add in the app bar.
+- Native waterfall cards preserve variable heights, with titles and descriptions
+  limited to three lines. Card/List switching uses Spectrum icons and tooltips.
+- Favicons provide a subtle client-only card accent; monochrome icons stay neutral
+  and missing icons use a deterministic domain palette. See the bounded styling
+  exception in `AGENTS.md`.
+- Add and Edit share a native dialog with removable tags, paginated tag suggestions,
+  multiline Description/Notes and confirmation before discarding changes.
+- `/api/tags/?q=...` filters names by a case-insensitive literal substring, with
+  the same filter applied to counts and pagination.
+- Native keyboard, focus and collection semantics remain in place. Bookmark
+  collections use 60-item server-side pagination.
 
 Optional real Chromium smoke:
 
