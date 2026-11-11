@@ -59,3 +59,20 @@ export const bookmarkTags = sqliteTable(
     index("bookmark_tag_tag_id_idx").on(t.tagId),
   ],
 );
+
+// Import checkpoints are written atomically in the same transaction as each
+// imported batch. Replaying a completed batch is safe and never overwrites
+// bookmarks created or modified by the user after an import.
+export const importBatches = sqliteTable(
+  "import_batches",
+  {
+    runId: text("run_id").notNull(),
+    batchIndex: integer("batch_index").notNull(),
+    digest: text("digest").notNull(),
+    recordCount: integer("record_count").notNull(),
+    insertedCount: integer("inserted_count").notNull(),
+    skippedCount: integer("skipped_count").notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.runId, t.batchIndex] })],
+);
