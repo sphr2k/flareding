@@ -1,5 +1,5 @@
 import { DurableObject } from "cloudflare:workers";
-import { and, desc, eq, gte, like, or, sql, type SQL } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, like, or, sql, type SQL } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/durable-sqlite";
 import { migrate } from "drizzle-orm/durable-sqlite/migrator";
 import migrations from "../../drizzle/migrations/migrations.js";
@@ -48,6 +48,28 @@ function tagNames(db: Db | QueryTransaction, bookmarkId: number): string[] {
     .map((row) => row.name);
 }
 
+/**
+ * One bounded tag query for the complete visible page instead of one query
+ * per bookmark. Empty pages incur zero tag lookups.
+ */
+function pageTagNames(db: Db, bookmarkIds: number[]): Map<number, string[]> {
+  const result = new Map<number, string[]>();
+  if (!bookmarkIds.length) return result;
+  const rows = db
+    .select({ bookmarkId: bookmarkTags.bookmarkId, name: tags.name })
+    .from(bookmarkTags)
+    .innerJoin(tags, eq(bookmarkTags.tagId, tags.id))
+    .where(inArray(bookmarkTags.bookmarkId, bookmarkIds))
+    .orderBy(bookmarkTags.bookmarkId, tags.name)
+    .all();
+  for (const row of rows) {
+    const values = result.get(row.bookmarkId);
+    if (values) values.push(row.name);
+    else result.set(row.bookmarkId, [row.name]);
+  }
+  return result;
+}
+
 function reconcileTags(db: QueryTransaction, bookmarkId: number, input: readonly string[]): void {
   const unique = [...new Set(input.map((name) => name.trim()).filter(Boolean))];
   db.delete(bookmarkTags).where(eq(bookmarkTags.bookmarkId, bookmarkId)).run();
@@ -80,6 +102,8 @@ export class BookmarkDO extends DurableObject<Env> {
     limit: number;
     offset: number;
     q?: string;
+    tag?: string;
+    unread?: boolean;
     archived?: boolean;
     modifiedSince?: string;
     addedSince?: string;
@@ -96,6 +120,17 @@ export class BookmarkDO extends DurableObject<Env> {
         like(bookmarks.url, pattern),
       );
       if (match) predicates.push(match);
+    }
+    if (options.unread === true) predicates.push(eq(bookmarks.isUnread, true));
+    if (options.tag) {
+      // Tag name is indexed UNIQUE; bookmark_tags primary key supports the
+      // following join without scanning every bookmark document.
+      const tagged = this.db
+        .select({ id: bookmarkTags.bookmarkId })
+        .from(bookmarkTags)
+        .innerJoin(tags, eq(bookmarkTags.tagId, tags.id))
+        .where(eq(tags.name, options.tag));
+      predicates.push(inArray(bookmarks.id, tagged));
     }
     if (options.modifiedSince) {
       predicates.push(gte(bookmarks.updatedAt, new Date(options.modifiedSince)));
@@ -119,7 +154,13 @@ export class BookmarkDO extends DurableObject<Env> {
       .all();
     return {
       count: total?.count ?? 0,
-      results: found.map((row) => toLinkding(row, tagNames(this.db, row.id))),
+      results: (() => {
+        const tagged = pageTagNames(
+          this.db,
+          found.map((row) => row.id),
+        );
+        return found.map((row) => toLinkding(row, tagged.get(row.id) ?? []));
+      })(),
     };
   }
 

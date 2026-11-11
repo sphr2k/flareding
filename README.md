@@ -170,3 +170,50 @@ The original export is retained and 14 non-HTTP(S) legacy entries remain
 quarantined rather than being rendered as browser-executable links.
 
 The privileged import secret should be disabled/removed after final validation.
+
+## Cost-conscious queries and UI navigation
+
+The bookmark list now executes at most **three SQL statements per page**:
+a count, one bounded bookmark page and one bulk tag-join for all visible bookmark
+IDs (not an N+1 query per card). A 60-item page previously executed 62 statements
+including one query per bookmark. The actual Cloudflare billable rows-read
+depends on the returned rows and index access paths, not only query count.
+
+- Filter collections with native Adobe Spectrum 2 Tabs: All / Unread / Archived.
+- Filter by exact tag name using indexed relational lookup.
+- 350ms debounced free-text and tag searches; cached pages for 15 seconds.
+- No full-data read or reimport is needed; all changes are read-only until
+  a user explicitly saves or archives a bookmark.
+
+The Workers Paid account subscription is active, but plan activation does not
+remove the need for bounded queries and monitoring.
+
+## Cloudflare Access / OIDC rollout (staging, planned)
+
+The application supports a verified Cloudflare Access-to-HttpOnly-session
+exchange at `POST /auth/access/session`. It requires these **separate**
+Cloudflare Worker secrets (not committed):
+
+- `ACCESS_TEAM_DOMAIN`: expected HTTPS issuer ending in `.cloudflareaccess.com`
+- `ACCESS_AUD`: exactly the staging UI application's audience tag
+- `ACCESS_ALLOWED_EMAIL`: explicitly authorized identity
+- `SESSION_SECRET`: independent high-entropy HMAC cookie key, **not** API_TOKEN
+
+The app validates Access RS256 JWT signing keys, expected issuer/audience,
+email allowlist and browser Origin. A partial configuration fails closed.
+When configured, the SPA requests a session after Cloudflare login;
+the API token is never sent to the browser and the token-based web-login form
+is disabled.
+
+Important: **Do not enable Worker-level Access** on Flareding: it would intercept
+linkding clients before they can send their ordinary Authorization: Token
+header. Configure a **hostname-scoped Access UI application** and a
+more-specific `/api/*` Access Bypass rule. Bypass only disables the Cloudflare
+login prompt; the Worker still enforces its existing token/session auth.
+The `/auth/*` path must remain protected by Access.
+
+The Cloudflare account already has existing Google Apps and one-time PIN
+identity providers. Access policies are managed separately through the
+`cf zero-trust` CLI. Roll out the bypass first and verify token clients,
+then enable UI Access/identity validation. Do not broadly allow everyone to
+authenticate into a bookmark application.

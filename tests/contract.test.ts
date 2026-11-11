@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vite-plus/test";
-import { bookmarkCreate, bookmarkPatch, bookmarkDto } from "../src/api/bookmark-contract.js";
+import {
+  bookmarkCreate,
+  bookmarkPatch,
+  bookmarkDto,
+  bookmarkPageInput,
+} from "../src/api/bookmark-contract.js";
 import { paginationLinks } from "../src/api/pagination.js";
 
 describe("linkding wire schemas derived from Drizzle", () => {
@@ -45,6 +50,15 @@ describe("linkding wire schemas derived from Drizzle", () => {
         preview_image_url: null,
       }).success,
     ).toBe(true);
+  });
+
+  it("parses unread and tag query parameters without Boolean('false') errors", () => {
+    expect(bookmarkPageInput.parse({ unread: "true", tag: "k8s" })).toMatchObject({
+      unread: true,
+      tag: "k8s",
+    });
+    expect(bookmarkPageInput.parse({ unread: "false" })).toMatchObject({ unread: false });
+    expect(bookmarkPageInput.safeParse({ unread: "yes" }).success).toBe(false);
   });
 
   it("produces linkding-compatible absolute pagination links", () => {

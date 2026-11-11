@@ -14,6 +14,7 @@ import { SearchField } from "@react-spectrum/s2/SearchField";
 import { StatusLight } from "@react-spectrum/s2/StatusLight";
 import { Tag, TagGroup } from "@react-spectrum/s2/TagGroup";
 import { TextField } from "@react-spectrum/s2/TextField";
+import { Tabs, TabList, Tab, TabPanel } from "@react-spectrum/s2/Tabs";
 import { style } from "@react-spectrum/s2/style" with { type: "macro" };
 import { useEffect, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -26,18 +27,32 @@ interface BookmarkPage {
   results: BookmarkDTO[];
 }
 
+type BookmarkView = "all" | "unread" | "archived";
+
+function useDebouncedValue(value: string, delay = 350) {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const timer = setTimeout(() => setDebounced(value), delay);
+    return () => clearTimeout(timer);
+  }, [value, delay]);
+  return debounced;
+}
+
 async function getBookmarks(
   search: string,
-  archived: boolean,
+  view: BookmarkView,
+  tag: string,
   offset: number,
 ): Promise<BookmarkPage> {
   const url = new URL(
-    archived ? "/api/bookmarks/archived/" : "/api/bookmarks/",
+    view === "archived" ? "/api/bookmarks/archived/" : "/api/bookmarks/",
     window.location.origin,
   );
   url.searchParams.set("limit", "60");
   url.searchParams.set("offset", String(offset));
   if (search.trim()) url.searchParams.set("q", search.trim());
+  if (view === "unread") url.searchParams.set("unread", "true");
+  if (tag.trim()) url.searchParams.set("tag", tag.trim());
   const response = await fetch(url, { credentials: "same-origin" });
   if (!response.ok)
     throw new Error(
@@ -129,7 +144,10 @@ function Login({ onLogin }: { onLogin: () => void }) {
 function BookmarkManager({ onLogout }: { onLogout: () => void }) {
   const cache = useQueryClient();
   const [search, setSearch] = useState("");
-  const [archived, setArchived] = useState(false);
+  const [view, setView] = useState<BookmarkView>("all");
+  const [tagFilter, setTagFilter] = useState("");
+  const debouncedSearch = useDebouncedValue(search);
+  const debouncedTag = useDebouncedValue(tagFilter);
   const [display, setDisplay] = useState<"cards" | "list">("cards");
   const [offset, setOffset] = useState(0);
   const [adding, setAdding] = useState(false);
@@ -137,8 +155,9 @@ function BookmarkManager({ onLogout }: { onLogout: () => void }) {
   const [title, setTitle] = useState("");
   const [tags, setTags] = useState("");
   const { data, isPending, error } = useQuery({
-    queryKey: ["bookmarks", search, archived, offset],
-    queryFn: () => getBookmarks(search, archived, offset),
+    queryKey: ["bookmarks", debouncedSearch, view, debouncedTag, offset],
+    queryFn: () => getBookmarks(debouncedSearch, view, debouncedTag, offset),
+    staleTime: 15_000,
   });
   const create = useMutation({
     mutationFn: async () =>
@@ -192,15 +211,15 @@ function BookmarkManager({ onLogout }: { onLogout: () => void }) {
         <Button variant="accent" onPress={() => setAdding(!adding)}>
           {adding ? "Abbrechen" : "Bookmark hinzufügen"}
         </Button>
-        <Button
-          variant="secondary"
-          onPress={() => {
-            setArchived(!archived);
+        <SearchField
+          label="Tag"
+          placeholder="Exakter Tagname"
+          value={tagFilter}
+          onChange={(value) => {
+            setTagFilter(value);
             setOffset(0);
           }}
-        >
-          {archived ? "Gespeicherte anzeigen" : "Archiv anzeigen"}
-        </Button>
+        />
         <Button
           variant="secondary"
           onPress={() => setDisplay(display === "cards" ? "list" : "cards")}
@@ -211,6 +230,24 @@ function BookmarkManager({ onLogout }: { onLogout: () => void }) {
           Abmelden
         </Button>
       </div>
+      <Tabs
+        aria-label="Bookmark-Sammlungen"
+        selectedKey={view}
+        onSelectionChange={(key) => {
+          setView(key as BookmarkView);
+          setOffset(0);
+        }}
+        density="compact"
+      >
+        <TabList aria-label="Bookmark-Sammlungen">
+          <Tab id="all">Alle</Tab>
+          <Tab id="unread">Ungelesen</Tab>
+          <Tab id="archived">Archiviert</Tab>
+        </TabList>
+        <TabPanel id="all">Gespeicherte Bookmarks</TabPanel>
+        <TabPanel id="unread">Noch nicht gelesene Bookmarks</TabPanel>
+        <TabPanel id="archived">Archivierte Bookmarks</TabPanel>
+      </Tabs>
       {adding && (
         <form
           onSubmit={submit}
@@ -255,7 +292,13 @@ function BookmarkManager({ onLogout }: { onLogout: () => void }) {
       {data && (
         <section className={style({ display: "flex", flexDirection: "column", gap: 12 })}>
           <p className={style({ font: "detail", color: "gray-700", margin: 0 })}>
-            {data.count} {archived ? "archivierte" : "gespeicherte"} Bookmarks
+            {data.count}{" "}
+            {view === "archived"
+              ? "archivierte"
+              : view === "unread"
+                ? "ungelesene"
+                : "gespeicherte"}{" "}
+            Bookmarks
           </p>
           {display === "cards" ? (
             <CardView
@@ -265,7 +308,7 @@ function BookmarkManager({ onLogout }: { onLogout: () => void }) {
               density="compact"
               variant="secondary"
               items={data.results}
-              dependencies={[archived, archive.isPending]}
+              dependencies={[view, archive.isPending]}
               styles={style({ width: "full" })}
             >
               {(bookmark) => {
@@ -413,21 +456,47 @@ function BookmarkManager({ onLogout }: { onLogout: () => void }) {
 
 export function App() {
   const [authenticated, setAuthenticated] = useState<boolean | null>(null);
+  const [loginMode, setLoginMode] = useState<"token" | "access">("token");
+  const [accessError, setAccessError] = useState("");
 
   useEffect(() => {
     let active = true;
-    fetch("/api/session/", { credentials: "same-origin" })
-      .then(async (response) => {
-        if (!response.ok) return false;
-        const data = (await response.json()) as { authenticated: boolean };
-        return data.authenticated;
-      })
-      .then((ready) => {
-        if (active) setAuthenticated(ready);
-      })
-      .catch(() => {
+    async function discoverSession() {
+      try {
+        const response = await fetch("/api/session/", { credentials: "same-origin" });
+        if (!response.ok) {
+          if (active) setAuthenticated(false);
+          return;
+        }
+        const info = (await response.json()) as {
+          authenticated: boolean;
+          login?: "access" | "token";
+        };
+        if (!active) return;
+        setLoginMode(info.login === "access" ? "access" : "token");
+        if (info.authenticated || info.login !== "access") {
+          setAuthenticated(info.authenticated);
+          return;
+        }
+        // Access protects /auth/* (never /api/*): the forwarded JWT is
+        // verified server-side, and the browser receives only an HttpOnly
+        // session cookie. The JWT and API token are never available to JS.
+        const exchange = await fetch("/auth/access/session", {
+          method: "POST",
+          credentials: "same-origin",
+        });
+        if (!active) return;
+        if (!exchange.ok) {
+          setAccessError("Cloudflare Access konnte die Anmeldung nicht bestätigen.");
+          setAuthenticated(false);
+          return;
+        }
+        setAuthenticated(true);
+      } catch {
         if (active) setAuthenticated(false);
-      });
+      }
+    }
+    void discoverSession();
     return () => {
       active = false;
     };
@@ -436,6 +505,9 @@ export function App() {
   async function logout() {
     await fetch("/api/session/", { method: "DELETE", credentials: "same-origin" });
     setAuthenticated(false);
+    if (loginMode === "access") {
+      window.location.assign("/cdn-cgi/access/logout");
+    }
   }
 
   return (
@@ -466,6 +538,21 @@ export function App() {
           <StatusLight variant="informative">Sitzung wird geprüft …</StatusLight>
         ) : authenticated ? (
           <BookmarkManager onLogout={logout} />
+        ) : loginMode === "access" ? (
+          <main
+            className={style({ display: "flex", flexDirection: "column", gap: 16, maxWidth: 480 })}
+          >
+            <h1 className={style({ font: "heading-xl" })}>Cloudflare Access</h1>
+            <p className={style({ font: "body", color: "gray-700" })}>
+              {accessError || "Die Anmeldung über Cloudflare Access ist erforderlich."}
+            </p>
+            <Button
+              variant="accent"
+              onPress={() => window.location.assign("/cdn-cgi/access/login")}
+            >
+              Über Cloudflare anmelden
+            </Button>
+          </main>
         ) : (
           <Login onLogin={() => setAuthenticated(true)} />
         )}

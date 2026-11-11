@@ -68,16 +68,26 @@ export function isSameOriginMutation(request: Request): boolean {
   return origin === new URL(request.url).origin;
 }
 
+export async function issueBrowserSession(secret: string): Promise<string> {
+  const expires = Math.floor(Date.now() / 1000) + MAX_AGE_SECONDS;
+  return `${SESSION_COOKIE}=${expires}.${await sign(secret, expires)}; Max-Age=${MAX_AGE_SECONDS}; Path=/api; HttpOnly; Secure; SameSite=Strict`;
+}
+
 export async function handleSession(
   request: Request,
   configuredSecret: string | undefined,
+  options: { sessionSecret?: string; accessMode?: boolean } = {},
 ): Promise<Response> {
   const headers = { "Cache-Control": "no-store" };
-  if (!configuredSecret || configuredSecret.length < 32) return authError("unavailable");
+  const sessionSecret = options.accessMode ? options.sessionSecret : configuredSecret;
+  if (!sessionSecret || sessionSecret.length < 32) return authError("unavailable");
 
   if (request.method === "GET") {
     return Response.json(
-      { authenticated: await hasBrowserSession(request, configuredSecret) },
+      {
+        authenticated: await hasBrowserSession(request, sessionSecret),
+        login: options.accessMode ? "access" : "token",
+      },
       { headers },
     );
   }
@@ -94,6 +104,9 @@ export async function handleSession(
   }
   if (request.method !== "POST")
     return Response.json({ detail: "Method not allowed." }, { status: 405, headers });
+  if (options.accessMode)
+    return Response.json({ detail: "Use Cloudflare Access login" }, { status: 403, headers });
+  if (!configuredSecret || configuredSecret.length < 32) return authError("unavailable");
   if (!isSameOriginMutation(request))
     return Response.json({ detail: "Forbidden." }, { status: 403, headers });
 
@@ -119,14 +132,8 @@ export async function handleSession(
   if ((await authenticateToken(bearerRequest, configuredSecret)) !== "ok")
     return authError("invalid");
 
-  const expires = Math.floor(Date.now() / 1000) + MAX_AGE_SECONDS;
   return Response.json(
     { authenticated: true },
-    {
-      headers: {
-        ...headers,
-        "Set-Cookie": `${SESSION_COOKIE}=${expires}.${await sign(configuredSecret, expires)}; Max-Age=${MAX_AGE_SECONDS}; Path=/api; HttpOnly; Secure; SameSite=Strict`,
-      },
-    },
+    { headers: { ...headers, "Set-Cookie": await issueBrowserSession(sessionSecret) } },
   );
 }

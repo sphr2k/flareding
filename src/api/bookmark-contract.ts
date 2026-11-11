@@ -70,6 +70,11 @@ export const pageInput = z.object({
 });
 
 export const bookmarkPageInput = pageInput.extend({
+  tag: z.string().trim().max(120).optional(),
+  unread: z
+    .enum(["true", "false"])
+    .transform((value) => value === "true")
+    .optional(),
   modified_since: z.string().datetime().optional(),
   added_since: z.string().datetime().optional(),
 });
