@@ -71,7 +71,10 @@ try {
   for (let i = 0; i < 8; i++) {
     const response = await api("POST", "/api/bookmarks/", {
       url: `https://example.org/flareding-browser-test-${randomUUID()}`,
-      title: `Synthetic bookmark ${i + 1}`,
+      title:
+        i === 7
+          ? "Synthetischer extrem langer Titel zur Prüfung von Darstellung, Zeilenumbruch und Responsivität – Unicode äöü 漢字"
+          : `Synthetic bookmark ${i + 1}`,
       description: "Test document for Spectrum CardView and list navigation.",
       tag_names: i % 2 ? ["typescript", "docs"] : ["cloudflare", "sqlite"],
       unread: i % 2 === 0,
@@ -87,7 +90,7 @@ try {
   await page.goto(origin, { waitUntil: "domcontentloaded" });
   await page.getByLabel("API-Token").fill(token);
   await page.getByRole("button", { name: "Anmelden" }).click();
-  await page.getByRole("button", { name: "Listenansicht" }).waitFor();
+  await page.getByText("Kacheln", { exact: true }).waitFor();
   await page.getByText("Synthetic bookmark 1").first().waitFor();
   await page.getByRole("tab", { name: "Ungelesen" }).click();
   await page
@@ -101,10 +104,38 @@ try {
   const cardCount = await page.locator('[role="gridcell"]').count();
   if (cardCount < 8) throw new Error(`Expected at least 8 CardView items, found ${cardCount}`);
 
-  await page.getByRole("button", { name: "Listenansicht" }).click();
-  await page.getByRole("button", { name: "Kachelansicht" }).waitFor();
-  const listCount = await page.locator("article").count();
-  if (listCount < 8) throw new Error(`Expected at least 8 list items, found ${listCount}`);
+  await page.getByText("Liste", { exact: true }).click();
+  const listCount = await page.locator('[role="row"]').count();
+  if (listCount < 4) throw new Error(`Expected at least 8 ListView rows, found ${listCount}`);
+  // Verify keyboard navigation and the native Spectrum dialog.
+  await page.getByText("Kacheln", { exact: true }).click();
+  await page.locator("body").click({ position: { x: 6, y: 6 } });
+  await page.keyboard.press("/");
+  const searchFocused = await page.evaluate(() => {
+    const node = document.activeElement;
+    return node?.tagName === "INPUT" && node.getAttribute("type") === "search";
+  });
+  if (!searchFocused) throw new Error("Slash key did not focus global Spectrum SearchField");
+  await page.keyboard.press("Escape");
+  await page.locator("body").click({ position: { x: 6, y: 6 } });
+  await page.keyboard.press("n");
+  await page.getByRole("dialog", { name: "Bookmark hinzufügen" }).waitFor();
+  await page.getByRole("button", { name: "Abbrechen" }).click();
+
+  // Synthetic UI only: run four real browser widths, store ignored PNG files.
+  for (const width of [360, 768, 1280, 1920]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.waitForTimeout(250);
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth > window.innerWidth + 1,
+    );
+    if (overflow) throw new Error(`Horizontal overflow at ${width}px`);
+    await page.screenshot({
+      path: `.cloudflare/issue21-synthetic-grid-${width}.png`,
+      fullPage: true,
+    });
+  }
+
   if (pageErrors.length) throw new Error(`Browser errors: ${pageErrors.length}`);
 
   console.log(
@@ -115,8 +146,14 @@ try {
   console.error(
     error instanceof Error ? error.message.replaceAll(token, "[REDACTED]") : "Browser smoke failed",
   );
-  if (process.env.DEBUG_BROWSER === "true")
+  if (process.env.DEBUG_BROWSER === "true") {
+    if (pageErrors.length)
+      console.error(
+        "Page errors:",
+        pageErrors.map((x) => x.slice(0, 400)),
+      );
     console.error(serverLogs.replaceAll(token, "[REDACTED]"));
+  }
   process.exitCode = 1;
 } finally {
   for (const id of created) {
