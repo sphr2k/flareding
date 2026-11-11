@@ -6,6 +6,7 @@ import { handleSession, hasBrowserSession, isSameOriginMutation } from "./api/se
 import type { Env } from "./env.js";
 import { accessMode, accessReady, handleAccessSession } from "./api/access.js";
 import { handlePinboardAdmin, isImportAdminPath } from "./import/admin-api.js";
+import { handleSiteIcon } from "./worker/site-icons.js";
 export { BookmarkDO } from "./worker/bookmarks.js";
 
 const handler = new OpenAPIHandler(
@@ -19,7 +20,7 @@ const handler = new OpenAPIHandler(
 );
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const path = new URL(request.url).pathname;
     // Must remain outside Access-bypassed /api/*.
     if (path === "/auth/access/session") return handleAccessSession(request, env);
@@ -50,6 +51,10 @@ export default {
           const auth = await authenticateToken(request, env.API_TOKEN);
           return authError(auth === "unavailable" ? "unavailable" : "invalid");
         }
+      }
+      if (path.startsWith("/api/site-icons/")) {
+        // Session/token authorization above applies before any DNS or fetch.
+        return handleSiteIcon(request, { waitUntil: (promise) => ctx.waitUntil(promise) });
       }
       const { matched, response } = await handler.handle(request, {
         prefix: "/api",

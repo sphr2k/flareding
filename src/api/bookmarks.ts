@@ -13,6 +13,7 @@ import {
 } from "./bookmark-contract.js";
 import { procedure } from "./base.js";
 import { paginationLinks } from "./pagination.js";
+import { withAbsoluteFavicon } from "./favicon-url.js";
 
 const idInput = z.object({ id: z.coerce.number().int().positive() });
 const notFound = (): never => {
@@ -38,6 +39,9 @@ export const bookmarkRoutes = {
       });
       return {
         ...result,
+        results: result.results.map((bookmark) =>
+          withAbsoluteFavicon(bookmark, context.requestUrl),
+        ),
         ...paginationLinks(context.requestUrl, result.count, input.limit, input.offset),
       };
     }),
@@ -55,6 +59,9 @@ export const bookmarkRoutes = {
       });
       return {
         ...result,
+        results: result.results.map((bookmark) =>
+          withAbsoluteFavicon(bookmark, context.requestUrl),
+        ),
         ...paginationLinks(context.requestUrl, result.count, input.limit, input.offset),
       };
     }),
@@ -63,15 +70,20 @@ export const bookmarkRoutes = {
     .meta(openapi({ method: "GET", path: "/bookmarks/{id}/" }))
     .input(idInput)
     .output(bookmarkDto)
-    .handler(
-      async ({ context, input }) => (await account(context).getBookmark(input.id)) ?? notFound(),
+    .handler(async ({ context, input }) =>
+      withAbsoluteFavicon(
+        (await account(context).getBookmark(input.id)) ?? notFound(),
+        context.requestUrl,
+      ),
     ),
 
   createBookmark: procedure
     .meta(openapi({ method: "POST", path: "/bookmarks/", successStatus: 201 }))
     .input(bookmarkCreate)
     .output(bookmarkDto)
-    .handler(async ({ context, input }) => account(context).saveBookmark(input)),
+    .handler(async ({ context, input }) =>
+      withAbsoluteFavicon(await account(context).saveBookmark(input), context.requestUrl),
+    ),
 
   patchBookmark: procedure
     .meta(openapi({ method: "PATCH", path: "/bookmarks/{id}/" }))
@@ -79,7 +91,10 @@ export const bookmarkRoutes = {
     .output(bookmarkDto)
     .handler(async ({ context, input }) => {
       const { id, ...patch } = input;
-      return (await account(context).patchBookmark(id, patch)) ?? notFound();
+      return withAbsoluteFavicon(
+        (await account(context).patchBookmark(id, patch)) ?? notFound(),
+        context.requestUrl,
+      );
     }),
 
   putBookmark: procedure
@@ -89,25 +104,32 @@ export const bookmarkRoutes = {
     .handler(async ({ context, input }) => {
       const { id, ...patch } = input;
       if (!patch.url) throw new ORPCError("BAD_REQUEST", { message: "URL is required for PUT" });
-      return (await account(context).patchBookmark(id, patch)) ?? notFound();
+      return withAbsoluteFavicon(
+        (await account(context).patchBookmark(id, patch)) ?? notFound(),
+        context.requestUrl,
+      );
     }),
 
   archiveBookmark: procedure
     .meta(openapi({ method: "POST", path: "/bookmarks/{id}/archive/" }))
     .input(idInput)
     .output(bookmarkDto)
-    .handler(
-      async ({ context, input }) =>
+    .handler(async ({ context, input }) =>
+      withAbsoluteFavicon(
         (await account(context).setArchived(input.id, true)) ?? notFound(),
+        context.requestUrl,
+      ),
     ),
 
   unarchiveBookmark: procedure
     .meta(openapi({ method: "POST", path: "/bookmarks/{id}/unarchive/" }))
     .input(idInput)
     .output(bookmarkDto)
-    .handler(
-      async ({ context, input }) =>
+    .handler(async ({ context, input }) =>
+      withAbsoluteFavicon(
         (await account(context).setArchived(input.id, false)) ?? notFound(),
+        context.requestUrl,
+      ),
     ),
 
   deleteBookmark: procedure

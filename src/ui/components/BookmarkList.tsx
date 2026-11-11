@@ -4,7 +4,7 @@ import { style } from "@react-spectrum/s2/style" with { type: "macro" };
 import { Image } from "@react-spectrum/s2/Image";
 import { Text } from "@react-spectrum/s2/ListView";
 import type { BookmarkDTO } from "../../api/bookmark-contract.js";
-import { fallbackIconDataUrl, normalizeSiteHost } from "../lib/site-icon.js";
+import { fallbackIconDataUrl, normalizeSiteHost, trustedSiteIconSrc } from "../lib/site-icon.js";
 
 interface Props {
   bookmarks: BookmarkDTO[];
@@ -33,11 +33,18 @@ export function BookmarkList({ bookmarks, onToggleArchive, isPending = false }: 
           rel="noopener noreferrer"
         >
           <Image
-            src={fallbackIconDataUrl(bookmark.url)}
+            src={
+              trustedSiteIconSrc(bookmark.favicon_url, window.location.origin) ??
+              fallbackIconDataUrl(bookmark.url)
+            }
             alt=""
             width={32}
             height={32}
             decoding="async"
+            loading="lazy"
+            renderError={() => (
+              <img src={fallbackIconDataUrl(bookmark.url)} alt="" width={32} height={32} />
+            )}
           />
           <Text>{bookmark.title || bookmark.url}</Text>
           <Text slot="description">

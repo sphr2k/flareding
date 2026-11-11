@@ -6,6 +6,7 @@ import {
   bookmarkPageInput,
 } from "../src/api/bookmark-contract.js";
 import { paginationLinks } from "../src/api/pagination.js";
+import { withAbsoluteFavicon } from "../src/api/favicon-url.js";
 
 describe("linkding wire schemas derived from Drizzle", () => {
   it("accepts linkding field names and rejects storage-only columns", () => {
@@ -50,6 +51,34 @@ describe("linkding wire schemas derived from Drizzle", () => {
         preview_image_url: null,
       }).success,
     ).toBe(true);
+  });
+
+  it("emits linkding-compatible absolute favicon URLs without exposing external image origins", () => {
+    const bookmark = bookmarkDto.parse({
+      id: 1,
+      url: "https://www.github.com/owner/repo",
+      title: "GitHub",
+      description: "",
+      notes: "",
+      is_archived: false,
+      unread: false,
+      shared: false,
+      tag_names: [],
+      date_added: "2026-11-11T00:00:00Z",
+      date_modified: "2026-11-11T00:00:00Z",
+      favicon_url: "/api/site-icons/github.com",
+      web_archive_snapshot_url: null,
+      preview_image_url: null,
+    });
+    expect(
+      withAbsoluteFavicon(bookmark, "https://flareding.example/api/bookmarks/").favicon_url,
+    ).toBe("https://flareding.example/api/site-icons/github.com");
+    expect(
+      withAbsoluteFavicon(
+        { ...bookmark, favicon_url: "https://untrusted.example/a" },
+        "https://flareding.example/api/bookmarks/",
+      ).favicon_url,
+    ).toBeNull();
   });
 
   it("parses unread and tag query parameters without Boolean('false') errors", () => {

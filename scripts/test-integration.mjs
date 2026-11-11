@@ -77,6 +77,22 @@ try {
   if (!ready) throw new Error("Timed out starting real local SQLite DO");
 
   expectStatus(await request("GET", "/api/bookmarks/", undefined, false), 401, "anonymous read");
+  expectStatus(
+    await request("GET", "/api/site-icons/localhost", undefined, false),
+    401,
+    "anonymous SSRF probing must require API authentication",
+  );
+  expectStatus(
+    await request("GET", "/api/site-icons/127.0.0.1"),
+    404,
+    "private IP favicon target rejected without outbound fetch",
+  );
+  expectStatus(
+    await request("GET", "/api/site-icons/metadata.google.internal"),
+    404,
+    "metadata domain favicon target rejected",
+  );
+
   const unconfiguredAccess = await fetch(origin + "/auth/access/session", {
     method: "POST",
     headers: { Origin: origin },
@@ -227,6 +243,8 @@ try {
   });
   expectStatus(created, 201, "create");
   assert.equal(typeof created.body.id, "number");
+  assert.equal(created.body.favicon_url, origin + "/api/site-icons/example.com");
+
   assert.deepEqual(created.body.tag_names, ["cloudflare", "drizzle"]);
   const id = created.body.id;
   const duplicate = await request("POST", "/api/bookmarks/", { url, title: "Same URL Updated" });
