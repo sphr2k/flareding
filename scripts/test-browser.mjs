@@ -123,6 +123,16 @@ try {
 
   const cardCount = await page.locator('[role="gridcell"]').count();
   if (cardCount < 8) throw new Error(`Expected at least 8 CardView items, found ${cardCount}`);
+  const cardHeights = await page
+    .locator('[role="gridcell"]')
+    .evaluateAll((nodes) =>
+      nodes
+        .map((node) => Math.round(node.getBoundingClientRect().height))
+        .filter((height) => height > 0),
+    );
+  if (cardHeights.length && Math.max(...cardHeights) > 350) {
+    throw new Error("Bookmark CardView cards are too tall: " + Math.max(...cardHeights) + "px");
+  }
 
   await page.getByText("Liste", { exact: true }).click();
   const listCount = await page.locator('[role="row"]').count();

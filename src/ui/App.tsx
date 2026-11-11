@@ -267,7 +267,7 @@ function BookmarkManager({ onLogout }: { onLogout: () => void }) {
             ) : activeDisplay === "cards" ? (
               <CardView
                 aria-label="Bookmark-Kacheln"
-                layout="grid"
+                layout="waterfall"
                 size="XL"
                 density="compact"
                 variant="secondary"

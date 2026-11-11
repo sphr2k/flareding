@@ -5,12 +5,14 @@
 Flareding uses **Adobe React Spectrum 2** (`@react-spectrum/s2`) as its **sole UI component and design system**.
 
 **Mandatory implementation order:**
+
 1. Look up the relevant **official Adobe React Spectrum 2 documentation**, including recommended UX patterns, component anatomy, slots and responsive behavior.
 2. Compose the UI using the **documented Spectrum 2 components and supported props** (including layouts, variants, sizes, density and collection APIs).
 3. Use **Spectrum 2 design tokens and its `style()` macro** for component composition and layout adjustments.
 4. Use custom CSS **only for the outer application shell** when there is no appropriate Spectrum 2 layout primitive.
 
 **Do not**:
+
 - Reimplement cards, toolbars, dialogs, menus, list items, selection behavior, focus management or other controls with custom HTML/CSS when Spectrum 2 provides them.
 - Override internal Spectrum component selectors, DOM structure, CSS grid tracks, spacing or typography to work around a component used incorrectly.
 - Add Tailwind, shadcn/ui or a second component/design system.
