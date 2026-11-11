@@ -69,6 +69,11 @@ export const pageInput = z.object({
   q: z.string().optional(),
 });
 
+// LinkThing requests 1000 tags per page. Keep the bookmark page cap unchanged.
+export const tagPageInput = pageInput.extend({
+  limit: z.coerce.number().int().min(1).max(1000).default(100),
+});
+
 export const bookmarkPageInput = pageInput.extend({
   tag: z.string().trim().max(120).optional(),
   unread: z

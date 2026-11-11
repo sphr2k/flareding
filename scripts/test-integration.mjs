@@ -269,6 +269,13 @@ try {
   const unreadOnly = await request("GET", "/api/bookmarks/?unread=true");
   expectStatus(unreadOnly, 200, "unread collection");
   assert.ok(unreadOnly.body.results.some((bookmark) => bookmark.id === id));
+  // LinkThing's default Unread view sends the legacy linkding query keyword.
+  const linkthingUnread = await request("GET", "/api/bookmarks/?q=%21unread&limit=10&offset=0");
+  expectStatus(linkthingUnread, 200, "LinkThing unread query");
+  assert.equal(linkthingUnread.body.count, unreadOnly.body.count);
+  assert.ok(linkthingUnread.body.results.some((bookmark) => bookmark.id === id));
+  const linkthingSearch = await request("GET", "/api/bookmarks/?q=%21unread%20Updated");
+  assert.ok(linkthingSearch.body.results.some((bookmark) => bookmark.id === id));
   const explicitFalse = await request("GET", "/api/bookmarks/?unread=false");
   expectStatus(explicitFalse, 200, "false unread must not filter");
   assert.ok(explicitFalse.body.results.some((bookmark) => bookmark.id === id));
@@ -279,6 +286,9 @@ try {
   expectStatus(tagList, 200, "tags list");
   assert.ok(tagList.body.results.some((tag) => tag.name === "sqlite"));
 
+  const linkthingTags = await request("GET", "/api/tags/?limit=1000");
+  expectStatus(linkthingTags, 200, "LinkThing tag page size");
+  assert.ok(linkthingTags.body.results.some((tag) => tag.name === "sqlite"));
   const filteredTags = await request("GET", "/api/tags/?q=SQLITE&limit=1");
   expectStatus(filteredTags, 200, "filtered tags");
   assert.equal(filteredTags.body.count, 1);

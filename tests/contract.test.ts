@@ -4,11 +4,18 @@ import {
   bookmarkPatch,
   bookmarkDto,
   bookmarkPageInput,
+  tagPageInput,
 } from "../src/api/bookmark-contract.js";
 import { paginationLinks } from "../src/api/pagination.js";
 import { withAbsoluteFavicon } from "../src/api/favicon-url.js";
 
 describe("linkding wire schemas derived from Drizzle", () => {
+  it("accepts LinkThing tag pages while keeping bounded bookmark pages", () => {
+    expect(tagPageInput.parse({ limit: "1000" }).limit).toBe(1000);
+    expect(tagPageInput.safeParse({ limit: "1001" }).success).toBe(false);
+    expect(bookmarkPageInput.safeParse({ limit: "1000" }).success).toBe(false);
+  });
+
   it("accepts linkding field names and rejects storage-only columns", () => {
     expect(
       bookmarkCreate.safeParse({

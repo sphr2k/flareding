@@ -112,8 +112,21 @@ export class BookmarkDO extends DurableObject<Env> {
     const predicates: SQL[] = [];
     if (options.archived === undefined) predicates.push(eq(bookmarks.isArchived, false));
     else predicates.push(eq(bookmarks.isArchived, options.archived));
-    if (options.q?.trim()) {
-      const pattern = `%${options.q.trim()}%`;
+    // LinkThing uses the legacy linkding keyword for its default Unread view.
+    // Only standalone keywords are consumed; quoted/literal fragments stay text.
+    let queryUnread = false;
+    const query = options.q
+      ?.replace(
+        /"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|(^|\s)!unread(?=\s|$)/gi,
+        (token, boundary) => {
+          if (boundary === undefined) return token;
+          queryUnread = true;
+          return " ";
+        },
+      )
+      .trim();
+    if (query) {
+      const pattern = `%${query}%`;
       const match = or(
         like(bookmarks.title, pattern),
         like(bookmarks.description, pattern),
@@ -122,7 +135,7 @@ export class BookmarkDO extends DurableObject<Env> {
       );
       if (match) predicates.push(match);
     }
-    if (options.unread === true) predicates.push(eq(bookmarks.isUnread, true));
+    if (options.unread === true || queryUnread) predicates.push(eq(bookmarks.isUnread, true));
     if (options.tag) {
       // Tag name is indexed UNIQUE; bookmark_tags primary key supports the
       // following join without scanning every bookmark document.

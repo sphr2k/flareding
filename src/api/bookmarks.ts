@@ -6,7 +6,7 @@ import {
   bookmarkDto,
   bookmarkPageInput,
   bookmarkPatch,
-  pageInput,
+  tagPageInput,
   pageOutput,
   tagCreate,
   tagDto,
@@ -143,7 +143,7 @@ export const bookmarkRoutes = {
 
   listTags: procedure
     .meta(openapi({ method: "GET", path: "/tags/" }))
-    .input(pageInput)
+    .input(tagPageInput)
     .output(pageOutput(tagDto))
     .handler(async ({ context, input }) => {
       const result = await account(context).listTags(input);

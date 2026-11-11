@@ -105,6 +105,19 @@ and unread semantics. Full import needs a dedicated idempotent batch endpoint
 to preserve the original creation timestamp. **No personal export has yet been
 uploaded to Staging.** Track it in #13.
 
+## LinkThing compatibility
+
+LinkThing's default Unread view requests `/api/bookmarks/?q=!unread&limit=10&offset=0`.
+The standalone `!unread` keyword filters unread bookmarks and can be combined
+with a text search; it is not treated as literal text. The existing `unread=true`
+parameter remains supported. An empty unread collection is valid when all bookmarks
+are marked read; LinkThing's All view requests the unfiltered collection.
+
+The tags endpoint accepts LinkThing's `limit=1000` with normal pagination. LinkThing
+currently reads only its first tag page, so this does not guarantee access to more
+than 1000 tags within that client. Full linkding search expression support remains
+outside this subset. Client compatibility is tracked in #10.
+
 ## Spectrum 2 UI concept
 
 The English UI follows Adobe's Spectrum 2 app and CardView examples:
