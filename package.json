@@ -13,7 +13,8 @@
     "lint": "vp lint",
     "format": "vp fmt",
     "format:check": "vp fmt --check",
-    "verify": "bun check && vp lint && vp fmt --check && vp test && cf build"
+    "verify": "bun check && vp lint && vp fmt --check && vp test && cf build",
+    "test:integration": "node scripts/test-integration.mjs"
   },
   "dependencies": {
     "@orpc/openapi": "2.0.0-beta.50",

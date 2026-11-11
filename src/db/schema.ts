@@ -14,7 +14,7 @@ import {
 export const bookmarks = sqliteTable(
   "bookmarks",
   {
-    id: text("id").primaryKey(),
+    id: integer("id").primaryKey({ autoIncrement: true }),
     url: text("url").notNull(),
     urlKey: text("url_key").notNull(),
     title: text("title").notNull(),
@@ -22,6 +22,7 @@ export const bookmarks = sqliteTable(
     notes: text("notes").notNull().default(""),
     isArchived: integer("is_archived", { mode: "boolean" }).notNull().default(false),
     isUnread: integer("is_unread", { mode: "boolean" }).notNull().default(false),
+    shared: integer("shared", { mode: "boolean" }).notNull().default(false),
     createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
     updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
     metadata: text("metadata", { mode: "json" }).$type<Record<string, unknown>>(),
@@ -36,8 +37,9 @@ export const bookmarks = sqliteTable(
 export const tags = sqliteTable(
   "tags",
   {
-    id: text("id").primaryKey(),
+    id: integer("id").primaryKey({ autoIncrement: true }),
     name: text("name").notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
   },
   (t) => [uniqueIndex("tag_name_unique").on(t.name)],
 );
@@ -45,10 +47,10 @@ export const tags = sqliteTable(
 export const bookmarkTags = sqliteTable(
   "bookmark_tags",
   {
-    bookmarkId: text("bookmark_id")
+    bookmarkId: integer("bookmark_id")
       .notNull()
       .references(() => bookmarks.id, { onDelete: "cascade" }),
-    tagId: text("tag_id")
+    tagId: integer("tag_id")
       .notNull()
       .references(() => tags.id, { onDelete: "cascade" }),
   },
