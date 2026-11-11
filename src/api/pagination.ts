@@ -7,7 +7,9 @@ export function paginationLinks(
   const page = (newOffset: number) => {
     const next = new URL(url);
     next.searchParams.set("limit", String(limit));
-    next.searchParams.set("offset", String(newOffset));
+    if (newOffset === 0) next.searchParams.delete("offset");
+    else next.searchParams.set("offset", String(newOffset));
+    next.searchParams.sort();
     return next.toString();
   };
   return {

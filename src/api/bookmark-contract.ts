@@ -63,16 +63,24 @@ export const tagCreate = tagInsertSchema.pick({ name: true }).extend({
   name: z.string().trim().min(1).max(120),
 });
 
+/** linkding v1.47.0 uses DRF LimitOffsetPagination, default 100, no max_limit.
+ * Invalid limit/offset values fall back rather than becoming validation errors.
+ */
+function paginationInteger(value: unknown, fallback: number, strict: boolean): number {
+  if (value === undefined || value === null) return fallback;
+  const text = String(value).trim();
+  if (!/^[+-]?\d(?:_?\d)*$/.test(text)) return fallback;
+  const parsed = Number(text.replaceAll("_", ""));
+  return Number.isInteger(parsed) && parsed >= (strict ? 1 : 0) ? parsed : fallback;
+}
+
 export const pageInput = z.object({
-  limit: z.coerce.number().int().min(1).max(500).default(100),
-  offset: z.coerce.number().int().min(0).default(0),
+  limit: z.preprocess((value) => paginationInteger(value, 100, true), z.number()),
+  offset: z.preprocess((value) => paginationInteger(value, 0, false), z.number()),
   q: z.string().optional(),
 });
 
-// LinkThing requests 1000 tags per page. Keep the bookmark page cap unchanged.
-export const tagPageInput = pageInput.extend({
-  limit: z.coerce.number().int().min(1).max(1000).default(100),
-});
+export const tagPageInput = pageInput;
 
 export const bookmarkPageInput = pageInput.extend({
   tag: z.string().trim().max(120).optional(),

@@ -1,0 +1,92 @@
+{
+  "upstream": "linkding v1.47.0",
+  "commit": "24b5ad6cc9bde497b5d1b1e86aed5a2fb7d25c2f",
+  "pagination": "djangorestframework 3.17.2 LimitOffsetPagination",
+  "count": 35,
+  "cases": [
+    {
+      "query": "",
+      "limit": 100,
+      "offset": 0,
+      "next": null,
+      "previous": null
+    },
+    {
+      "query": "limit=1000",
+      "limit": 1000,
+      "offset": 0,
+      "next": null,
+      "previous": null
+    },
+    {
+      "query": "limit=1000000",
+      "limit": 1000000,
+      "offset": 0,
+      "next": null,
+      "previous": null
+    },
+    {
+      "query": "limit=0",
+      "limit": 100,
+      "offset": 0,
+      "next": null,
+      "previous": null
+    },
+    {
+      "query": "limit=-1",
+      "limit": 100,
+      "offset": 0,
+      "next": null,
+      "previous": null
+    },
+    {
+      "query": "limit=invalid",
+      "limit": 100,
+      "offset": 0,
+      "next": null,
+      "previous": null
+    },
+    {
+      "query": "limit=1.5",
+      "limit": 100,
+      "offset": 0,
+      "next": null,
+      "previous": null
+    },
+    {
+      "query": "offset=-1",
+      "limit": 100,
+      "offset": 0,
+      "next": null,
+      "previous": null
+    },
+    {
+      "query": "offset=invalid",
+      "limit": 100,
+      "offset": 0,
+      "next": null,
+      "previous": null
+    },
+    {
+      "query": "limit=10&offset=10",
+      "limit": 10,
+      "offset": 10,
+      "next": "https://reference.example/api/tags/?limit=10&offset=20",
+      "previous": "https://reference.example/api/tags/?limit=10"
+    },
+    {
+      "query": "limit=10&offset=20",
+      "limit": 10,
+      "offset": 20,
+      "next": "https://reference.example/api/tags/?limit=10&offset=30",
+      "previous": "https://reference.example/api/tags/?limit=10&offset=10"
+    },
+    {
+      "query": "limit=10&offset=100",
+      "limit": 10,
+      "offset": 100,
+      "next": null,
+      "previous": "https://reference.example/api/tags/?limit=10&offset=90"
+    }
+  ]
+}

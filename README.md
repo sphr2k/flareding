@@ -113,7 +113,9 @@ with a text search; it is not treated as literal text. The existing `unread=true
 parameter remains supported. An empty unread collection is valid when all bookmarks
 are marked read; LinkThing's All view requests the unfiltered collection.
 
-The tags endpoint accepts LinkThing's `limit=1000` with normal pagination. LinkThing
+Pagination follows linkding v1.47.0: default 100, no configured maximum, invalid
+limits fall back to 100 and invalid offsets to 0. `limit=1000000` is accepted
+for both bookmarks and tags. LinkThing
 currently reads only its first tag page, so this does not guarantee access to more
 than 1000 tags within that client. Full linkding search expression support remains
 outside this subset. Client compatibility is tracked in #10.

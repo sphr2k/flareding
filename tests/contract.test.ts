@@ -10,10 +10,18 @@ import { paginationLinks } from "../src/api/pagination.js";
 import { withAbsoluteFavicon } from "../src/api/favicon-url.js";
 
 describe("linkding wire schemas derived from Drizzle", () => {
-  it("accepts LinkThing tag pages while keeping bounded bookmark pages", () => {
-    expect(tagPageInput.parse({ limit: "1000" }).limit).toBe(1000);
-    expect(tagPageInput.safeParse({ limit: "1001" }).success).toBe(false);
-    expect(bookmarkPageInput.safeParse({ limit: "1000" }).success).toBe(false);
+  it("matches upstream pagination without an application page cap", () => {
+    for (const schema of [tagPageInput, bookmarkPageInput]) {
+      expect(schema.parse({ limit: "1000000" }).limit).toBe(1000000);
+      for (const limit of [undefined, "", "nope", "0", "-1", "1.5"])
+        expect(schema.parse({ limit }).limit).toBe(100);
+      for (const offset of [undefined, "", "nope", "-1", "1.5"])
+        expect(schema.parse({ offset }).offset).toBe(0);
+      expect(schema.parse({ limit: "+1_000", offset: "100" })).toMatchObject({
+        limit: 1000,
+        offset: 100,
+      });
+    }
   });
 
   it("accepts linkding field names and rejects storage-only columns", () => {
@@ -101,8 +109,8 @@ describe("linkding wire schemas derived from Drizzle", () => {
     expect(
       paginationLinks("https://bookmarks.example/api/bookmarks/?q=sqlite", 250, 100, 100),
     ).toEqual({
-      next: "https://bookmarks.example/api/bookmarks/?q=sqlite&limit=100&offset=200",
-      previous: "https://bookmarks.example/api/bookmarks/?q=sqlite&limit=100&offset=0",
+      next: "https://bookmarks.example/api/bookmarks/?limit=100&offset=200&q=sqlite",
+      previous: "https://bookmarks.example/api/bookmarks/?limit=100&q=sqlite",
     });
     expect(paginationLinks("https://example.com/api/bookmarks/", 10, 100, 0)).toEqual({
       next: null,

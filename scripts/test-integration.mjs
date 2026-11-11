@@ -289,6 +289,17 @@ try {
   const linkthingTags = await request("GET", "/api/tags/?limit=1000");
   expectStatus(linkthingTags, 200, "LinkThing tag page size");
   assert.ok(linkthingTags.body.results.some((tag) => tag.name === "sqlite"));
+  for (const endpoint of ["tags", "bookmarks"]) {
+    const million = await request("GET", `/api/${endpoint}/?limit=1000000`);
+    expectStatus(million, 200, `upstream uncapped ${endpoint} page`);
+    assert.equal(million.body.results.length, million.body.count);
+    for (const limit of ["0", "-1", "invalid", "1.5"])
+      expectStatus(
+        await request("GET", `/api/${endpoint}/?limit=${limit}&offset=-1`),
+        200,
+        "upstream pagination fallback",
+      );
+  }
   const filteredTags = await request("GET", "/api/tags/?q=SQLITE&limit=1");
   expectStatus(filteredTags, 200, "filtered tags");
   assert.equal(filteredTags.body.count, 1);
