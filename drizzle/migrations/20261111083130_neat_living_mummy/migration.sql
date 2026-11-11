@@ -1,0 +1,1 @@
+ALTER TABLE `tags` ADD `created_at` integer NOT NULL;

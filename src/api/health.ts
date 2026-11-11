@@ -1,11 +1,8 @@
 import { openapi } from "@orpc/openapi";
-import { os } from "@orpc/server";
 import { z } from "zod";
-import type { Env } from "../env.js";
+import { procedure } from "./base.js";
 
-const procedure = os.$context<{ env: Env }>();
-
-/** The only unauthenticated API route until linkding auth is implemented. */
+/** Diagnostic health endpoint: no bookmark or token contents exposed. */
 export const router = {
   health: procedure
     .meta(openapi({ method: "GET", path: "/health" }))

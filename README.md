@@ -1,58 +1,83 @@
 # Flareding
 
-Cloudflare-native, linkding-compatible bookmark manager.
+Cloudflare-native, linkding-compatible personal bookmark service.
 
-**Status:** infrastructure scaffold, not the complete linkding-compatible service.
-The public /api/health endpoint exposes no bookmark data. No bookmark CRUD route
-will be enabled before API token authentication and linkding HTTP conformance tests.
+Status: authenticated bookmark/tag REST API and a functional Adobe React
+Spectrum 2 UI. This is a **subset** of linkding: asset upload, URL metadata
+scraping, all search operators, bulk operations and full client compatibility
+remain tracked in GitHub Issues.
 
-## Stack
+## Architecture
 
-- Cloudflare Worker + SQLite-backed Durable Object, typed native DO RPC.
-- Drizzle ORM 1.x, Drizzle Kit migrations, Zod 4 CRUD schemas derived from Drizzle.
-- oRPC v2 OpenAPIHandler (linkding-compatible REST contract in upcoming milestone).
-- React 19 SPA with **Adobe React Spectrum 2** exclusively. No Tailwind, shadcn, or duplicate UI kit.
-- Bun 1.4.3, TypeScript 7 (bun check), Vite+ lint, format, tests.
-- Cloudflare Vite plugin v2 and cf CLI with cloudflare.config.ts (no Wrangler).
+- Runtime: Cloudflare Worker + one SQLite Durable Object per account, native DO RPC.
+- Persistence: Drizzle 1.x durable-sqlite and versioned Drizzle Kit migrations.
+- Validation: Zod 4 CRUD validators generated from Drizzle. Separate linkding field mappings only.
+- HTTP: oRPC v2 OpenAPIHandler; external REST compatible URLs and response DTOs.
+- UI: React 19 + Adobe React Spectrum 2. No Tailwind, shadcn or duplicate UI kit.
+- Tooling: Bun 1.4.3, TypeScript 7 via bun check, Vite+ tests/lint/format, cf CLI.
 
 ## Development
 
-Current cf beta requires Node 24.22.1 or newer.
+Pinned Cloudflare CLI requires Node 24.22.1.
 
 ```sh
-bun install
+bun install --frozen-lockfile
 bun run typecheck
-bun run test
 bun run lint
 bun run format:check
-bun run db:generate  # after schema changes
+bun run db:check
+bun run test
 bun run build
+bun run test:integration  # real workerd and SQLite DO via cf dev
 bun run dev
 ```
 
-The local dev server serves React and a SQLite DO. GET /api/health invokes the DO
-through native RPC; initial SQL is applied by the Drizzle durable-sqlite migrator.
-Generated migration SQL imports are rewritten to Vite ?raw by
-scripts/prepare-migrations.ts to load SQL strings rather than asset URLs.
+Drizzle applies generated migrations from drizzle/migrations in the Durable
+Object constructor. The migration postprocessor rewrites SQL imports with ?raw
+so the Worker receives SQL text, not asset URLs.
 
-Use staging mode to isolate the DO namespace: bun run deploy:staging.
-Production must wait for authentication, linkding compatibility and backup tests.
+## Authentication
 
-## UI design
+All bookmark/tag APIs require Authorization: Token <your-token> or an authenticated
+same-origin session. The Worker requires a Cloudflare API_TOKEN secret.
+Unconfigured authentication fails closed with HTTP 503.
 
-Adobe **React Spectrum 2** is the sole design system. Use its Provider, accessible
-controls, responsive layouts and design tokens. The Vite style macro is built with
-unplugin-parcel-macros; Vite+ dep discovery is disabled to avoid interpreting
-macro import attributes as normal browser imports.
+React Spectrum login accepts a token once and exchanges it for a signed,
+12-hour HttpOnly, Secure, SameSite=Strict cookie. No token is saved in browser
+storage. Cookie-authenticated mutation requests require same-origin Origin.
+Rotating API_TOKEN revokes sessions. REST token authentication remains available
+for original linkding clients independently of the UI.
 
-Bookmark controls are intentionally disabled until the authenticated backend is ready.
-No API token is persisted in localStorage.
+For local development, provide a Git-ignored .dev.vars containing the secret:
+
+```text
+API_TOKEN=<cryptographically-random-token-at-least-32-characters>
+```
+
+Configure staging with cf deploy --mode staging --secrets-file <private-JSON>.
+Never commit credentials, bookmark exports or browser cookies.
+
+## linkding subset
+
+Implemented: list, create/upsert, get, patch/put, delete, archived list,
+archive/unarchive, tag list/create/delete, pagination and basic text search.
+Numeric IDs, linkding tag_names and date_added/date_modified fields are emitted.
+Responses containing personal data use Cache-Control: private, no-store.
+
+Not yet implemented: metadata scraping, FTS5, advanced search syntax, bookmark
+check, assets and full HTTP contract coverage.
+
+## UI
+
+Only Adobe React Spectrum 2. The official page.css sets full-page dark mode;
+layout and typography use Spectrum tokens. The React SPA provides token login,
+search, create bookmarks, tag display, archive/unarchive and logout.
 
 ## Tracking
 
 - Roadmap: https://github.com/sphr2k/flareding/issues/1
-- Infrastructure: https://github.com/sphr2k/flareding/issues/2
+- API auth: https://github.com/sphr2k/flareding/issues/5
+- Linkding REST: https://github.com/sphr2k/flareding/issues/4
 - UI: https://github.com/sphr2k/flareding/issues/11
 
-The LLM-based tag harmonizer is a separate downstream Worker, with reviewable and
-idempotent application of proposed tag changes.
+The LLM tag harmonizer remains a separate downstream component.

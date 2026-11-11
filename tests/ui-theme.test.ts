@@ -18,6 +18,6 @@ describe("Spectrum 2 full-page theme", () => {
     const source = readFileSync(new URL("../src/ui/App.tsx", import.meta.url), "utf8");
     expect(source).toContain('font: "heading-xl"');
     expect(source).not.toContain('fontSize: "heading-xl"');
-    expect(source).toContain('minHeight: "100dvh"');
+    expect(source).toMatch(/minHeight:\s*"100dvh"/);
   });
 });

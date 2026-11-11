@@ -8,3 +8,6 @@ dist/
 !.env.example
 *.log
 .DS_Store
+
+# Private staging bootstrap credential; never commit.
+.secrets/

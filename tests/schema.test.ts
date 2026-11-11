@@ -7,7 +7,6 @@ import {
 } from "../src/db/validation.js";
 
 const validBookmark = {
-  id: "bookmark-1",
   url: "https://example.com/guide",
   urlKey: "https://example.com/guide",
   title: "Example",
@@ -33,17 +32,21 @@ describe("Drizzle-generated Zod CRUD schemas", () => {
     expect(
       bookmarkSelectSchema.safeParse({
         ...validBookmark,
+        id: 1,
         description: "",
         notes: "",
         isArchived: false,
         isUnread: false,
+        shared: false,
         metadata: null,
       }).success,
     ).toBe(true);
   });
 
   it("validates relational tags", () => {
-    expect(tagInsertSchema.safeParse({ id: "tag-1", name: "cloudflare" }).success).toBe(true);
-    expect(tagInsertSchema.safeParse({ name: "cloudflare" }).success).toBe(false);
+    expect(
+      tagInsertSchema.safeParse({ name: "cloudflare", createdAt: new Date("2026-11-11") }).success,
+    ).toBe(true);
+    expect(tagInsertSchema.safeParse({ name: 123 }).success).toBe(false);
   });
 });
