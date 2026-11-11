@@ -14,7 +14,9 @@
     "format": "vp fmt",
     "format:check": "vp fmt --check",
     "verify": "bun check && vp lint && vp fmt --check && vp test && cf build",
-    "test:integration": "node scripts/test-integration.mjs"
+    "test:integration": "node scripts/test-integration.mjs",
+    "pinboard:dry-run": "bun scripts/pinboard-dryrun.ts",
+    "test:browser": "node scripts/test-browser.mjs"
   },
   "dependencies": {
     "@orpc/openapi": "2.0.0-beta.50",
@@ -39,6 +41,7 @@
     "cf": "1.0.0-beta.29",
     "drizzle-kit": "1.0.0-rc.5",
     "miniflare": "5.20261110.0-beta",
+    "playwright": "1.59.0",
     "typescript": "7.0.2",
     "unplugin-parcel-macros": "0.2.0",
     "vite": "8.3.7",

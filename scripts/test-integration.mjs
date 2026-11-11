@@ -107,6 +107,15 @@ try {
   });
   assert.equal(unauthorized.status, 401);
 
+  const invalidLink = await request("POST", "/api/bookmarks/", {
+    url: "javascript:alert(1)",
+    title: "A script URL must never become a bookmark",
+  });
+  assert.ok(
+    [400, 422].includes(invalidLink.status),
+    `Unsafe URL must be rejected: HTTP ${invalidLink.status}`,
+  );
+
   const url = `https://example.com/flareding-e2e-${randomUUID()}`;
   const created = await request("POST", "/api/bookmarks/", {
     url,

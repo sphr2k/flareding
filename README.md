@@ -81,3 +81,48 @@ search, create bookmarks, tag display, archive/unarchive and logout.
 - UI: https://github.com/sphr2k/flareding/issues/11
 
 The LLM tag harmonizer remains a separate downstream component.
+
+## Import planning for personal Pinboard export
+
+A private Pinboard JSON export is available under `/workspace/pinboard`. Do not
+commit that export, snippets of personal bookmarks, generated screenshots with
+private content, or a raw transformed copy.
+
+Dry-run only:
+
+```sh
+bun run pinboard:dry-run /workspace/pinboard/pinboard_export.2026.11.11_09.05.json
+```
+
+The dry-run prints **aggregates only**. The 2026-11-11 export has 8,245
+bookmarks, 6,719 distinct tags and 25,655 raw assignments. Of those, 8,231
+HTTP(S) entries can be mapped to current linkding DTOs. The remaining 14
+legacy schemes (6 ftp, 7 javascript, 1 about) require review; they are not
+uploaded or rendered as clickable executable URLs.
+
+The mapping preserves original date_added, title, description, shared/privacy
+and unread semantics. Full import needs a dedicated idempotent batch endpoint
+to preserve the original creation timestamp. **No personal export has yet been
+uploaded to Staging.** Track it in #13.
+
+## Spectrum 2 UI concept
+
+Design follows the official Spectrum 2 CardView collection pattern:
+
+- Default: `CardView` / `Card`, compact S grid, showing title, domain,
+  short description, a few tags and an ActionMenu.
+- Alternate: compact list view. Switch using the native Spectrum controls.
+- Native keyboard and collection semantics instead of custom card interactions.
+- 60-item server-side pagination: never download all 8,245 bookmarks to render
+  the grid; searchable tags and richer facets will be incremental.
+- Upcoming: SideNav, tag facet search, native multi-selection with ActionBar and
+  responsive details panel. Track #15.
+
+Optional real Chromium smoke:
+
+```sh
+bunx playwright install chromium
+bun run test:browser
+```
+
+It seeds only synthetic bookmarks into a local SQLite DO and cleans up.

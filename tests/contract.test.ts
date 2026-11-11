@@ -15,7 +15,13 @@ describe("linkding wire schemas derived from Drizzle", () => {
     expect(bookmarkCreate.safeParse({ url: "https://example.com", urlKey: "evil" }).success).toBe(
       false,
     );
-    expect(bookmarkCreate.safeParse({ url: "javascript:alert(1)" }).success).toBe(false);
+    expect(bookmarkCreate.safeParse({ url: "javascript:alert(1)", title: "Unsafe" }).success).toBe(
+      false,
+    );
+    expect(
+      bookmarkCreate.safeParse({ url: "ftp://example.com/file", title: "Unsafe" }).success,
+    ).toBe(false);
+    expect(bookmarkPatch.safeParse({ url: "javascript:alert(1)" }).success).toBe(false);
   });
 
   it("keeps partial update schemas and exposed bookmark response separate", () => {
