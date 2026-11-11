@@ -38,6 +38,7 @@ describe("private Pinboard JSON import planning", () => {
         unread: true,
         createdAt: new Date("2009-07-08T10:20:30Z"),
         tags: ["cloudflare", "sqlite"],
+        metadata: { source: "pinboard", hash: "somehash", meta: "somemeta" },
       },
     ]);
   });

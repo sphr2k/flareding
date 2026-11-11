@@ -16,7 +16,8 @@
     "verify": "bun check && vp lint && vp fmt --check && vp test && cf build",
     "test:integration": "node scripts/test-integration.mjs",
     "pinboard:dry-run": "bun scripts/pinboard-dryrun.ts",
-    "test:browser": "node scripts/test-browser.mjs"
+    "test:browser": "node scripts/test-browser.mjs",
+    "pinboard:import": "bun scripts/import-pinboard.mjs"
   },
   "dependencies": {
     "@orpc/openapi": "2.0.0-beta.50",

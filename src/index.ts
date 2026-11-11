@@ -4,6 +4,7 @@ import { bookmarkRoutes } from "./api/bookmarks.js";
 import { authenticateToken, authError } from "./api/auth.js";
 import { handleSession, hasBrowserSession, isSameOriginMutation } from "./api/session.js";
 import type { Env } from "./env.js";
+import { handlePinboardAdmin, isImportAdminPath } from "./import/admin-api.js";
 export { BookmarkDO } from "./worker/bookmarks.js";
 
 const handler = new OpenAPIHandler(
@@ -20,6 +21,7 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const path = new URL(request.url).pathname;
     if (path.startsWith("/api/")) {
+      if (isImportAdminPath(path)) return handlePinboardAdmin(request, env);
       if (path === "/api/session/") return handleSession(request, env.API_TOKEN);
       if (path !== "/api/health") {
         // External integrations use the original linkding token header.

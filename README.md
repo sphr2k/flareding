@@ -126,3 +126,47 @@ bun run test:browser
 ```
 
 It seeds only synthetic bookmarks into a local SQLite DO and cleans up.
+
+## Pinboard import (Staging only)
+
+A private Pinboard JSON export is available at
+`/workspace/pinboard/pinboard_export.2026.11.11_09.05.json`.
+The source and any transformed rows must never be committed or printed in logs.
+
+The import endpoint requires **two independent secrets**:
+
+- `API_TOKEN`: existing linkding API credential
+- `IMPORT_SECRET`: separate high-entropy admin import credential
+
+Both must be configured through Cloudflare Secret bindings. A valid web-session
+cookie or API token by itself cannot call the admin import endpoint. Production
+has no import secret by default, making the endpoint inaccessible there.
+
+The admin import protocol is restartable: 50 documents per transaction;
+each batch includes its deterministic SHA-256 digest and a source-file-based
+run identifier. Every transaction commits bookmarks, tag relations and an
+`import_batches` checkpoint atomically. Replaying the same batch returns
+the stored outcome without overwriting edits to imported bookmarks.
+Changed payloads with the same batch index fail with HTTP 409.
+
+Prepare a private Git-ignored `.secrets/staging.json` containing both secrets.
+Do not copy this file to CI or the repository. In the project environment:
+
+```sh
+bun run pinboard:dry-run /workspace/pinboard/pinboard_export.2026.11.11_09.05.json
+bun run pinboard:import -- --source /workspace/pinboard/pinboard_export.2026.11.11_09.05.json
+bun run pinboard:import -- --source /workspace/pinboard/pinboard_export.2026.11.11_09.05.json --apply
+bun run pinboard:import -- --source /workspace/pinboard/pinboard_export.2026.11.11_09.05.json --verify-only
+```
+
+The CLI refuses to write to non-staging hosts, checks that the target is empty
+or exclusively contains checkpoints from the same import run, uses bounded
+retries, and verifies final bookmark counts, private/unread status, tag
+relations, original timestamp range, checkpoint count and source-derived
+cardinality. A finalization call removes orphan tags left by deleted test data
+**only after aggregate verification passes**.
+
+The original export is retained and 14 non-HTTP(S) legacy entries remain
+quarantined rather than being rendered as browser-executable links.
+
+The privileged import secret should be disabled/removed after final validation.

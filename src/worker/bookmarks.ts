@@ -3,7 +3,9 @@ import { and, desc, eq, gte, like, or, sql, type SQL } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/durable-sqlite";
 import { migrate } from "drizzle-orm/durable-sqlite/migrator";
 import migrations from "../../drizzle/migrations/migrations.js";
-import { bookmarks, bookmarkTags, tags } from "../db/schema.js";
+import { bookmarks, bookmarkTags, importBatches, tags } from "../db/schema.js";
+import type { ImportBatchInput, ImportBatchResult, ImportStats } from "../import/batch-schema.js";
+import { stableJson } from "../import/digest.js";
 import type {
   BookmarkCreate,
   BookmarkDTO,
@@ -251,5 +253,174 @@ export class BookmarkDO extends DurableObject<Env> {
     return (
       this.db.delete(tags).where(eq(tags.id, id)).returning({ id: tags.id }).get() !== undefined
     );
+  }
+  /**
+   * Only called through a dedicated dual-secret admin endpoint.
+   * One synchronous SQLite transaction contains the records, tag links AND
+   * the checkpoint; retrying a completed batch never modifies user edits.
+   */
+  async importPinboardBatch(input: ImportBatchInput): Promise<ImportBatchResult> {
+    const bytes = new TextEncoder().encode(stableJson(input.records));
+    const hash = [...new Uint8Array(await crypto.subtle.digest("SHA-256", bytes))]
+      .map((byte) => byte.toString(16).padStart(2, "0"))
+      .join("");
+    if (hash !== input.digest) throw new Error("IMPORT_DIGEST_INVALID");
+
+    return this.db.transaction((tx) => {
+      const existingBatch = tx
+        .select()
+        .from(importBatches)
+        .where(
+          and(eq(importBatches.runId, input.runId), eq(importBatches.batchIndex, input.batchIndex)),
+        )
+        .get();
+      if (existingBatch) {
+        if (existingBatch.digest !== input.digest) throw new Error("IMPORT_CHECKPOINT_CONFLICT");
+        return {
+          replay: true,
+          inserted: existingBatch.insertedCount,
+          skipped: existingBatch.skippedCount,
+          recordCount: existingBatch.recordCount,
+        };
+      }
+
+      let inserted = 0;
+      let skipped = 0;
+      const tagIds = new Map<string, number>();
+      for (const record of input.records) {
+        const existing = tx
+          .select({ id: bookmarks.id })
+          .from(bookmarks)
+          .where(eq(bookmarks.urlKey, record.url))
+          .get();
+        if (existing) {
+          // Never overwrite user data, even if a prior import was interrupted.
+          skipped++;
+          continue;
+        }
+        const originalDate = new Date(record.createdAt);
+        const created = tx
+          .insert(bookmarks)
+          .values({
+            url: record.url,
+            urlKey: record.url,
+            title: record.title,
+            description: record.description ?? "",
+            notes: record.notes ?? "",
+            isUnread: record.isUnread ?? false,
+            shared: record.shared ?? false,
+            isArchived: false,
+            createdAt: originalDate,
+            updatedAt: originalDate,
+            metadata: record.metadata ?? null,
+          })
+          .returning({ id: bookmarks.id })
+          .get();
+        if (!created) throw new Error("IMPORT_INSERT_FAILED");
+        inserted++;
+        for (const name of new Set(record.tags)) {
+          let tagId = tagIds.get(name);
+          if (!tagId) {
+            tx.insert(tags).values({ name, createdAt: originalDate }).onConflictDoNothing().run();
+            tagId = tx.select({ id: tags.id }).from(tags).where(eq(tags.name, name)).get()?.id;
+            if (!tagId) throw new Error("IMPORT_TAG_FAILED");
+            tagIds.set(name, tagId);
+          }
+          tx.insert(bookmarkTags)
+            .values({ bookmarkId: created.id, tagId })
+            .onConflictDoNothing()
+            .run();
+        }
+      }
+      tx.insert(importBatches)
+        .values({
+          runId: input.runId,
+          batchIndex: input.batchIndex,
+          digest: input.digest,
+          recordCount: input.records.length,
+          insertedCount: inserted,
+          skippedCount: skipped,
+          createdAt: new Date(),
+        })
+        .run();
+
+      return { replay: false, inserted, skipped, recordCount: input.records.length };
+    });
+  }
+
+  async pinboardImportStats(runId: string): Promise<ImportStats> {
+    const row = this.db
+      .select({
+        totalBookmarks: sql<number>`count(*)`,
+        privateBookmarks: sql<number>`coalesce(sum(case when ${bookmarks.shared} = 0 then 1 else 0 end), 0)`,
+        unreadBookmarks: sql<number>`coalesce(sum(case when ${bookmarks.isUnread} = 1 then 1 else 0 end), 0)`,
+        firstDate: sql<number | null>`min(${bookmarks.createdAt})`,
+        lastDate: sql<number | null>`max(${bookmarks.createdAt})`,
+      })
+      .from(bookmarks)
+      .get();
+
+    const tagCount =
+      this.db
+        .select({ count: sql<number>`count(*)` })
+        .from(tags)
+        .get()?.count ?? 0;
+    const links =
+      this.db
+        .select({ count: sql<number>`count(*)` })
+        .from(bookmarkTags)
+        .get()?.count ?? 0;
+    const imported = this.db
+      .select({
+        completedBatches: sql<number>`count(*)`,
+        importedRecords: sql<number>`coalesce(sum(${importBatches.recordCount}),0)`,
+        insertedRecords: sql<number>`coalesce(sum(${importBatches.insertedCount}),0)`,
+        skippedRecords: sql<number>`coalesce(sum(${importBatches.skippedCount}),0)`,
+      })
+      .from(importBatches)
+      .where(eq(importBatches.runId, runId))
+      .get();
+    return {
+      totalBookmarks: row?.totalBookmarks ?? 0,
+      privateBookmarks: row?.privateBookmarks ?? 0,
+      unreadBookmarks: row?.unreadBookmarks ?? 0,
+      firstDate:
+        row?.firstDate === null || row?.firstDate === undefined
+          ? null
+          : new Date(row.firstDate).toISOString(),
+      lastDate:
+        row?.lastDate === null || row?.lastDate === undefined
+          ? null
+          : new Date(row.lastDate).toISOString(),
+      tags: tagCount,
+      tagAssignments: links,
+      completedBatches: imported?.completedBatches ?? 0,
+      importedRecords: imported?.importedRecords ?? 0,
+      insertedRecords: imported?.insertedRecords ?? 0,
+      skippedRecords: imported?.skippedRecords ?? 0,
+    };
+  }
+
+  /** Call only after import verification; cleans orphaned tags from deleted test data. */
+  async pruneOrphanTags(): Promise<number> {
+    const current =
+      this.db
+        .select({ count: sql<number>`count(*)` })
+        .from(tags)
+        .where(sql`NOT EXISTS (
+        SELECT 1 FROM ${bookmarkTags}
+        WHERE ${bookmarkTags.tagId} = ${tags.id}
+      )`)
+        .get()?.count ?? 0;
+    if (current > 0) {
+      this.db
+        .delete(tags)
+        .where(sql`NOT EXISTS (
+        SELECT 1 FROM ${bookmarkTags}
+        WHERE ${bookmarkTags.tagId} = ${tags.id}
+      )`)
+        .run();
+    }
+    return current;
   }
 }

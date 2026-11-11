@@ -19,6 +19,7 @@ export default defineConfig(({ mode }) => {
       env: {
         BOOKMARKS: bindings.durableObject({ worker: name, exportName: "BookmarkDO" }),
         API_TOKEN: bindings.secret(),
+        IMPORT_SECRET: bindings.secret(),
         ASSETS: bindings.assets(),
       },
     },

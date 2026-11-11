@@ -24,6 +24,7 @@ export type PinboardBookmark = {
   unread: boolean;
   createdAt: Date;
   tags: string[];
+  metadata: Record<string, string>;
 };
 
 /** Only HTTP(S) URLs may become clickable/bookmark API records. */
@@ -108,6 +109,11 @@ export function planPinboardImport(input: unknown): PinboardPlan {
       unread: row.toread === "yes",
       createdAt: timestamp,
       tags,
+      metadata: {
+        source: "pinboard",
+        ...(row.hash === undefined ? {} : { hash: row.hash }),
+        ...(row.meta === undefined ? {} : { meta: row.meta }),
+      },
     });
   }
   return {
