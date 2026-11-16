@@ -14,7 +14,7 @@ import { BookmarkDialog } from "./components/BookmarkDialog.js";
 import { SettingsDialog } from "./components/SettingsDialog.js";
 import { BookmarkCard } from "./components/BookmarkCard.js";
 import { BookmarkList } from "./components/BookmarkList.js";
-import type { BookmarkDTO } from "../api/bookmark-contract.js";
+import type { BookmarkDTO } from "../api/linkding/v1/contract.js";
 
 interface BookmarkPage {
   count: number;

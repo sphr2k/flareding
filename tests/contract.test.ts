@@ -1,3 +1,7 @@
+import {
+  flaredingV1TagPageInput,
+  flaredingV1TagPageOutput,
+} from "../src/api/flareding/v1/contract.js";
 import { describe, expect, it } from "vite-plus/test";
 import {
   bookmarkCreate,
@@ -5,9 +9,26 @@ import {
   bookmarkDto,
   bookmarkPageInput,
   tagPageInput,
-} from "../src/api/bookmark-contract.js";
-import { paginationLinks } from "../src/api/pagination.js";
-import { withAbsoluteFavicon } from "../src/api/favicon-url.js";
+} from "../src/api/linkding/v1/contract.js";
+import { paginationLinks } from "../src/api/linkding/v1/pagination.js";
+import { withAbsoluteFavicon } from "../src/api/linkding/v1/favicon-url.js";
+
+describe("additive Flareding v1 overlay contract", () => {
+  it("types and validates include_archived without altering the Linkding v1 contract", () => {
+    expect(flaredingV1TagPageInput.parse({}).include_archived).toBe(false);
+    expect(flaredingV1TagPageInput.parse({ include_archived: "true" }).include_archived).toBe(true);
+    expect(flaredingV1TagPageInput.safeParse({ include_archived: "all" }).success).toBe(false);
+    expect(Object.keys(tagPageInput.shape)).toEqual(["limit", "offset", "q"]);
+    expect(
+      flaredingV1TagPageOutput.safeParse({
+        count: 1,
+        next: null,
+        previous: null,
+        results: [{ id: 1, name: "active", date_added: "2026-11-16T00:00:00.000Z" }],
+      }).success,
+    ).toBe(true);
+  });
+});
 
 describe("linkding wire schemas derived from Drizzle", () => {
   it("matches upstream pagination without an application page cap", () => {

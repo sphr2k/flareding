@@ -1,5 +1,26 @@
 # Flareding – Agent Instructions
 
+## API boundaries: Linkding compatibility vs. additive Flareding overlays
+
+- The **Linkding v1** API contracts/routes live exclusively in
+  `src/api/linkding/v1/` and preserve the upstream-style `/api/bookmarks/`,
+  `/api/tags/`, etc. Public compatibility is pinned to linkding v1.47.0.
+- A Flareding feature **must not change Linkding request/response schemas or
+  semantics**. Keep compatibility behavior untouched and add new behavior under
+  `src/api/flareding/v1/` with explicit versioned `/api/flareding/v1/*`
+  routes, Zod schemas and typed frontend clients. Never add vendor-specific
+  query parameters to a Linkding endpoint to implement a Flareding feature.
+- The versioned overlay may reuse Linkding DTOs and shared database services,
+  but not modify upstream DTOs. Changes to an existing overlay remain additive;
+  incompatible changes need a new Flareding API version.
+- MCP is a separate, typed Flareding-owned tool surface; its options should be
+  consistent with the overlay (`include_archived` wire vs. `includeArchived`
+  internal boolean). Auth/session infrastructure is separate from both REST
+  contracts. Details: `docs/api-architecture.md`.
+- Add compatibility conformance tests and overlay-specific behavior tests
+  whenever adding a new endpoint or filter. Preserve all existing URLs and DO
+  storage IDs; migrations are not part of an API overlay refactor.
+
 ## UI: Adobe React Spectrum 2 first
 
 Flareding uses **Adobe React Spectrum 2** (`@react-spectrum/s2`) as its **sole UI component and design system**.

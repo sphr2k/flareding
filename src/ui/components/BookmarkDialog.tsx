@@ -10,7 +10,8 @@ import { InlineAlert } from "@react-spectrum/s2/InlineAlert";
 import { style } from "@react-spectrum/s2/style" with { type: "macro" };
 import { useEffect, useId, useState, type FormEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
-import type { BookmarkDTO } from "../../api/bookmark-contract.js";
+import type { BookmarkDTO } from "../../api/linkding/v1/contract.js";
+import { getActiveTagSuggestions } from "../lib/flareding-v1-client.js";
 
 export interface BookmarkInput {
   url: string;
@@ -54,10 +55,7 @@ export function BookmarkDialog({ bookmark, onClose, onSave }: Props) {
   const tags = useQuery({
     queryKey: ["tags", tagSearch],
     queryFn: async ({ signal }) => {
-      const params = new URLSearchParams({ q: tagSearch, limit: "30" });
-      const response = await fetch(`/api/tags/?${params}`, { signal, credentials: "same-origin" });
-      if (!response.ok) throw new Error("Could not load tag suggestions.");
-      return (await response.json()) as { results: { name: string }[] };
+      return getActiveTagSuggestions(tagSearch, signal);
     },
     staleTime: 60_000,
   });

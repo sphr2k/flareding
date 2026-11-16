@@ -1,25 +1,54 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { DialogContainer, Dialog, Heading, Content, ButtonGroup } from "@react-spectrum/s2/Dialog";
 import { Button } from "@react-spectrum/s2/Button";
-import { TextField } from "@react-spectrum/s2/TextField";
-import { InlineAlert } from "@react-spectrum/s2/InlineAlert";
+import { ActionButton } from "@react-spectrum/s2/ActionButton";
+import { TextField, type TextFieldRef } from "@react-spectrum/s2/TextField";
+import { Tooltip, TooltipTrigger } from "@react-spectrum/s2/Tooltip";
 import { style } from "@react-spectrum/s2/style" with { type: "macro" };
+import Visibility from "@react-spectrum/s2/icons/Visibility";
+import Copy from "@react-spectrum/s2/icons/Copy";
 
 interface Props {
   onClose: () => void;
 }
 
-/** Token stays only in dialog component memory and is cleared on unmount. */
+const MASKED_TOKEN = "000000000000000000000000";
+
+/**
+ * Keep a fixed-size, read-only field and icon action throughout loading/reveal/copy.
+ * Never fetch the credential before explicit user interaction or persist it on disk.
+ */
 export function SettingsDialog({ onClose }: Props) {
   const [token, setToken] = useState("");
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const [copied, setCopied] = useState(false);
+  const [status, setStatus] = useState("");
+  const [error, setError] = useState(false);
+  const fieldRef = useRef<TextFieldRef<HTMLInputElement>>(null);
+  const pending = useRef(false);
 
-  async function reveal() {
-    if (busy) return;
+  async function copy(value: string) {
+    try {
+      await navigator.clipboard.writeText(value);
+      setError(false);
+      setStatus("Token copied to clipboard.");
+    } catch {
+      // On the first reveal React has not necessarily rendered the new value yet.
+      requestAnimationFrame(() => fieldRef.current?.select());
+      setError(true);
+      setStatus("Clipboard access denied. Select the token and copy it manually.");
+    }
+  }
+
+  async function revealAndCopy() {
+    if (pending.current) return;
+    if (token) {
+      await copy(token);
+      return;
+    }
+
+    pending.current = true;
     setBusy(true);
-    setError("");
+    setStatus("");
     try {
       const response = await fetch("/auth/access/token", {
         method: "POST",
@@ -28,21 +57,16 @@ export function SettingsDialog({ onClose }: Props) {
       });
       if (!response.ok)
         throw new Error("Could not retrieve API token. Reauthenticate with Cloudflare Access.");
-      const result = (await response.json()) as { token: string };
+      const result = (await response.json()) as { token?: string };
+      if (!result.token) throw new Error("The API did not return a token.");
       setToken(result.token);
+      await copy(result.token);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Could not retrieve API token.");
+      setError(true);
+      setStatus(cause instanceof Error ? cause.message : "Could not retrieve API token.");
     } finally {
+      pending.current = false;
       setBusy(false);
-    }
-  }
-
-  async function copyToken() {
-    try {
-      await navigator.clipboard.writeText(token);
-      setCopied(true);
-    } catch {
-      setError("Clipboard access denied. Select the token to copy it manually.");
     }
   }
 
@@ -56,40 +80,51 @@ export function SettingsDialog({ onClose }: Props) {
               Your web session uses Cloudflare Access. Bookmark clients use a separate, static
               linkding-compatible API token.
             </p>
-            {token ? (
-              <TextField label="API token" value={token} isReadOnly />
-            ) : (
-              <p className={style({ font: "body", color: "gray-700", margin: 0 })}>
-                The API token is hidden by default. Only reveal it when configuring a client.
-              </p>
-            )}
-            {error && (
-              <InlineAlert variant="negative">
-                <Heading>API token unavailable</Heading>
-                <Content>{error}</Content>
-              </InlineAlert>
-            )}
-            {copied && (
-              <InlineAlert variant="positive">
-                <Heading>Token copied</Heading>
-                <Content>Keep this credential private.</Content>
-              </InlineAlert>
-            )}
+            <div
+              className={style({ display: "flex", alignItems: "end", gap: 8, width: "full" })}
+              onClick={(event) => {
+                // A click on the field (not the icon or the label) also reveals/copies.
+                if (event.target instanceof HTMLInputElement) void revealAndCopy();
+              }}
+            >
+              <TextField
+                ref={fieldRef}
+                label="API token"
+                type={token ? "text" : "password"}
+                value={token || MASKED_TOKEN}
+                isReadOnly
+                autoComplete="off"
+                spellCheck="false"
+                styles={style({ flexGrow: 1, minWidth: 0 })}
+              />
+              <TooltipTrigger>
+                <ActionButton
+                  aria-label={token ? "Copy API token" : "Reveal and copy API token"}
+                  size="M"
+                  isPending={busy}
+                  onPress={() => void revealAndCopy()}
+                >
+                  {token ? <Copy /> : <Visibility />}
+                </ActionButton>
+                <Tooltip>{token ? "Copy API token" : "Reveal and copy API token"}</Tooltip>
+              </TooltipTrigger>
+            </div>
+            <p
+              role="status"
+              aria-live="polite"
+              className={[
+                style({ font: "detail", height: 56, overflow: "auto", margin: 0 }),
+                error ? style({ color: "negative" }) : style({ color: "gray-700" }),
+              ].join(" ")}
+            >
+              {status || "Click the token field or the icon to reveal and copy it."}
+            </p>
           </div>
         </Content>
         <ButtonGroup>
           <Button variant="secondary" onPress={onClose}>
             Close
           </Button>
-          {token ? (
-            <Button variant="accent" onPress={() => void copyToken()}>
-              Copy token
-            </Button>
-          ) : (
-            <Button variant="accent" onPress={() => void reveal()} isPending={busy}>
-              Reveal API token
-            </Button>
-          )}
         </ButtonGroup>
       </Dialog>
     </DialogContainer>

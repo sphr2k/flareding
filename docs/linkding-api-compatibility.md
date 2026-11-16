@@ -12,6 +12,10 @@ Primary references:
 - [Pagination configuration](https://github.com/sissbruecker/linkding/blob/v1.47.0/bookmarks/settings/base.py)
 - [Locked dependencies](https://github.com/sissbruecker/linkding/blob/v1.47.0/uv.lock)
 
+Versioned source for this upstream contract: `src/api/linkding/v1/`.
+Flareding-specific additions must use `src/api/flareding/v1/` and must not
+change this contract. See [API boundaries](api-architecture.md).
+
 ## Pagination
 
 The original configures DRF LimitOffsetPagination with default limit 100 and

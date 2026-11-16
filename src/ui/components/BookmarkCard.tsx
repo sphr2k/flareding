@@ -2,8 +2,9 @@ import { useState } from "react";
 import { Card, Content, Footer, Text } from "@react-spectrum/s2/CardView";
 import { ActionMenu, MenuItem } from "@react-spectrum/s2/ActionMenu";
 import { style } from "@react-spectrum/s2/style" with { type: "macro" };
-import type { BookmarkDTO } from "../../api/bookmark-contract.js";
+import type { BookmarkDTO } from "../../api/linkding/v1/contract.js";
 import { SiteIcon } from "./SiteIcon.js";
+import { BookmarkTags } from "./BookmarkTags.js";
 import { normalizeSiteHost, siteCardBackground } from "../lib/site-icon.js";
 
 interface Props {
@@ -71,10 +72,7 @@ export function BookmarkCard({ bookmark, onEdit, onToggleArchive, isPending = fa
       </Content>
       {bookmark.tag_names.length > 0 && (
         <Footer styles={style({ paddingTop: 8 })}>
-          <span className={style({ font: "detail", color: "gray-700" })}>
-            {bookmark.tag_names.slice(0, 3).join(" · ")}
-            {bookmark.tag_names.length > 3 ? ` +${bookmark.tag_names.length - 3}` : ""}
-          </span>
+          <BookmarkTags tags={bookmark.tag_names} />
         </Footer>
       )}
     </Card>

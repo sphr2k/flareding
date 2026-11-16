@@ -1,5 +1,9 @@
 import { z } from "zod";
-import { bookmarkInsertSchema, bookmarkUpdateSchema, tagInsertSchema } from "../db/validation.js";
+import {
+  bookmarkInsertSchema,
+  bookmarkUpdateSchema,
+  tagInsertSchema,
+} from "../../../db/validation.js";
 
 /**
  * External linkding DTOs intentionally differ from the Drizzle column names.

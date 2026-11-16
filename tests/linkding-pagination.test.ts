@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vite-plus/test";
-import { pageInput } from "../src/api/bookmark-contract.js";
-import { paginationLinks } from "../src/api/pagination.js";
+import { pageInput } from "../src/api/linkding/v1/contract.js";
+import { paginationLinks } from "../src/api/linkding/v1/pagination.js";
 
 const fixture = JSON.parse(
   readFileSync(new URL("./fixtures/linkding-pagination.json", import.meta.url), "utf8"),

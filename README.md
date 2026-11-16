@@ -12,7 +12,10 @@ remain tracked in GitHub Issues.
 - Runtime: Cloudflare Worker + one SQLite Durable Object per account, native DO RPC.
 - Persistence: Drizzle 1.x durable-sqlite and versioned Drizzle Kit migrations.
 - Validation: Zod 4 CRUD validators generated from Drizzle. Separate linkding field mappings only.
-- HTTP: oRPC v2 OpenAPIHandler; external REST compatible URLs and response DTOs.
+- HTTP: oRPC v2 OpenAPIHandler; upstream-compatible Linkding v1 routes live in
+  `src/api/linkding/v1/`. Additive, typed Flareding v1 extensions live in
+  `src/api/flareding/v1/` under `/api/flareding/v1/*`. See
+  [API architecture](docs/api-architecture.md).
 - UI: React 19 + Adobe React Spectrum 2. No Tailwind, shadcn or duplicate UI kit.
 - Tooling: Bun 1.4.3, TypeScript 7 via bun check, Vite+ tests/lint/format, cf CLI.
 

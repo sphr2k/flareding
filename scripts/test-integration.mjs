@@ -355,6 +355,58 @@ try {
         "upstream pagination fallback",
       );
   }
+  // The additive Flareding v1 API filters by active usage; upstream Linkding
+  // tag listing remains unchanged even when a tag belongs only to archived data.
+  const archiveOnlyName = `archive-only-${randomUUID()}`;
+  const sharedTagName = `shared-${randomUUID()}`;
+  const activeTagName = `active-${randomUUID()}`;
+  const activeUrl = `https://example.com/flareding-tag-active-${randomUUID()}`;
+  const archiveUrl = `https://example.com/flareding-tag-archived-${randomUUID()}`;
+  const activeForTags = await request("POST", "/api/bookmarks/", {
+    url: activeUrl,
+    title: "Synthetic active",
+    tag_names: [sharedTagName, activeTagName],
+  });
+  expectStatus(activeForTags, 201, "active synthetic bookmark for tags");
+  const archivedForTags = await request("POST", "/api/bookmarks/", {
+    url: archiveUrl,
+    title: "Synthetic archived",
+    tag_names: [archiveOnlyName, sharedTagName],
+    is_archived: true,
+  });
+  expectStatus(archivedForTags, 201, "archived synthetic bookmark for tags");
+  const upstreamAll = await request("GET", `/api/tags/?q=${archiveOnlyName}`);
+  expectStatus(upstreamAll, 200, "upstream Linkding tags unchanged");
+  assert.equal(upstreamAll.body.count, 1);
+  assert.equal(upstreamAll.body.results[0].name, archiveOnlyName);
+  const overlayArchivedHidden = await request(
+    "GET",
+    `/api/flareding/v1/tags/?q=${archiveOnlyName}`,
+  );
+  expectStatus(overlayArchivedHidden, 200, "Flareding overlay active-only default");
+  assert.equal(overlayArchivedHidden.body.count, 0);
+  const overlayArchivedIncluded = await request(
+    "GET",
+    `/api/flareding/v1/tags/?q=${archiveOnlyName}&include_archived=true`,
+  );
+  expectStatus(overlayArchivedIncluded, 200, "Flareding overlay include archived");
+  assert.equal(overlayArchivedIncluded.body.count, 1);
+  const overlayShared = await request("GET", `/api/flareding/v1/tags/?q=${sharedTagName}`);
+  expectStatus(overlayShared, 200, "shared tag from active bookmark remains visible");
+  assert.equal(overlayShared.body.count, 1);
+  const overlayBad = await request("GET", "/api/flareding/v1/tags/?include_archived=all");
+  assert.ok([400, 422].includes(overlayBad.status));
+  expectStatus(
+    await request("DELETE", `/api/bookmarks/${activeForTags.body.id}/`),
+    204,
+    "cleanup synthetic active tag bookmark",
+  );
+  expectStatus(
+    await request("DELETE", `/api/bookmarks/${archivedForTags.body.id}/`),
+    204,
+    "cleanup synthetic archived tag bookmark",
+  );
+
   const filteredTags = await request("GET", "/api/tags/?q=SQLITE&limit=1");
   expectStatus(filteredTags, 200, "filtered tags");
   assert.equal(filteredTags.body.count, 1);
