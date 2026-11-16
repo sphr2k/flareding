@@ -143,7 +143,7 @@ export function BookmarkDialog({ bookmark, onClose, onSave }: Props) {
                   onInputChange={setTagInput}
                   selectedKey={null}
                   allowsCustomValue
-                  menuTrigger="input"
+                  menuTrigger="focus"
                   direction="bottom"
                   shouldFlip={false}
                   loadingState={tags.isFetching ? "loading" : "idle"}

@@ -11,10 +11,17 @@ interface Props {
   bookmark: BookmarkDTO;
   onEdit: (bookmark: BookmarkDTO) => void;
   onToggleArchive: (bookmark: BookmarkDTO) => void;
+  onDelete: (bookmark: BookmarkDTO) => void;
   isPending?: boolean;
 }
 
-export function BookmarkCard({ bookmark, onEdit, onToggleArchive, isPending = false }: Props) {
+export function BookmarkCard({
+  bookmark,
+  onEdit,
+  onToggleArchive,
+  onDelete,
+  isPending = false,
+}: Props) {
   const [accent, setAccent] = useState<number | null | undefined>(undefined);
   const host = normalizeSiteHost(bookmark.url) ?? "Unknown website";
   const title = bookmark.title || bookmark.url;
@@ -26,7 +33,7 @@ export function BookmarkCard({ bookmark, onEdit, onToggleArchive, isPending = fa
       href={bookmark.url}
       target="_blank"
       rel="noopener noreferrer"
-      size="XL"
+      size="L"
       density="compact"
       variant="secondary"
       UNSAFE_style={{ backgroundImage: siteCardBackground(host, accent) }}
@@ -46,12 +53,14 @@ export function BookmarkCard({ bookmark, onEdit, onToggleArchive, isPending = fa
             className={style({
               display: "flex",
               flexDirection: "column",
-              gap: 4,
+              gap: 8,
               minWidth: 0,
               flexGrow: 1,
             })}
           >
-            <span className={style({ lineClamp: 3, overflowWrap: "anywhere" })}>{title}</span>
+            <span className={style({ font: "heading-sm", lineClamp: 3, overflowWrap: "anywhere" })}>
+              {title}
+            </span>
             <span className={style({ font: "detail", color: "gray-700" })}>{host}</span>
           </span>
         </Text>
@@ -59,16 +68,23 @@ export function BookmarkCard({ bookmark, onEdit, onToggleArchive, isPending = fa
           styles={style({ alignSelf: "start", marginTop: 8, marginBottom: 0 })}
           aria-label={`Actions for ${title}`}
           size="S"
+          isQuiet
           isDisabled={isPending}
           onAction={(key) => {
             if (key === "edit") onEdit(bookmark);
             if (key === "archive") onToggleArchive(bookmark);
+            if (key === "delete") onDelete(bookmark);
           }}
         >
           <MenuItem id="edit">Edit</MenuItem>
           <MenuItem id="archive">{bookmark.is_archived ? "Unarchive" : "Archive"}</MenuItem>
+          <MenuItem id="delete">Delete…</MenuItem>
         </ActionMenu>
-        {bookmark.description && <Text slot="description">{bookmark.description}</Text>}
+        {bookmark.description && (
+          <Text slot="description" styles={style({ font: "body", color: "gray-700" })}>
+            {bookmark.description}
+          </Text>
+        )}
       </Content>
       {bookmark.tag_names.length > 0 && (
         <Footer styles={style({ paddingTop: 8 })}>

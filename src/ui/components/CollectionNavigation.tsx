@@ -26,13 +26,14 @@ export function CollectionNavigation({
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
-        gap: 16,
+        gap: 12,
         paddingX: 12,
+        paddingTop: 8,
         paddingBottom: 16,
       })}
     >
       <TooltipTrigger placement="end">
-        <Button variant="accent" size="L" aria-label="Add bookmark" onPress={onAdd}>
+        <Button variant="accent" size="M" aria-label="Add bookmark" onPress={onAdd}>
           <Add />
         </Button>
         <Tooltip>Add bookmark</Tooltip>
@@ -40,7 +41,7 @@ export function CollectionNavigation({
       <ToggleButtonGroup
         aria-label="Collections"
         orientation="vertical"
-        size="L"
+        size="M"
         isQuiet
         selectionMode="single"
         disallowEmptySelection

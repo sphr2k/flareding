@@ -1,6 +1,6 @@
 /**
  * All presentation information derives from the origin hostname, never the
- * bookmark title or path. This is deterministic across CardView and ListView.
+ * bookmark title or path. This is deterministic across CardView layouts.
  * Do not fetch URL content or load remote assets from here.
  */
 import { normalizeSiteHost } from "../../shared/site-host.js";
@@ -26,7 +26,7 @@ export function siteMonogram(host: string): string {
 }
 
 /**
- * Inert, self-contained SVG for native Spectrum ListView's direct Image slot.
+ * Inert, self-contained SVG fallback for missing website icons.
  * Colors use the same restrained domain palette as CardView; host
  * monograms are strictly alphanumeric and cannot inject markup.
  */

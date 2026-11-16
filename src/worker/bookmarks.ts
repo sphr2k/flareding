@@ -105,6 +105,8 @@ export class BookmarkDO extends DurableObject<Env> {
     offset: number;
     q?: string;
     tag?: string;
+    /** Flareding v1-only AND tag filters; never used by Linkding v1 routes. */
+    tagsAll?: string[];
     unread?: boolean;
     archived?: boolean;
     modifiedSince?: string;
@@ -146,6 +148,19 @@ export class BookmarkDO extends DurableObject<Env> {
         .innerJoin(tags, eq(bookmarkTags.tagId, tags.id))
         .where(eq(tags.name, options.tag));
       predicates.push(inArray(bookmarks.id, tagged));
+    }
+    for (const tagName of options.tagsAll ?? []) {
+      // One indexed EXISTS predicate per selected tag. Each required tag
+      // must be associated with the bookmark (AND, not OR).
+      predicates.push(
+        exists(
+          this.db
+            .select({ id: bookmarkTags.bookmarkId })
+            .from(bookmarkTags)
+            .innerJoin(tags, eq(tags.id, bookmarkTags.tagId))
+            .where(and(eq(bookmarkTags.bookmarkId, bookmarks.id), eq(tags.name, tagName))),
+        ),
+      );
     }
     if (options.modifiedSince) {
       predicates.push(gte(bookmarks.updatedAt, new Date(options.modifiedSince)));

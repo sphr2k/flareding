@@ -39,3 +39,19 @@
    with `true`. It never rewrites stored tag associations.
 5. Authentication is unchanged: both REST namespaces enforce the worker's
    existing static API Token or authorized same-origin browser session.
+
+## Unified search and URL state
+
+The Flareding v1 JSON endpoint `POST /api/flareding/v1/bookmarks/search/`
+accepts `{query, tags: string[], view, limit, offset}`, validates all fields
+with Zod, and returns the existing typed Linkding bookmark DTO/page response.
+It evaluates every tag in `tags` as an indexed SQL EXISTS predicate, combined
+with AND. Free text searches title, URL, description and notes as before.
+This endpoint is an additive overlay: legacy Linkding `/api/bookmarks/` and its
+single-tag semantics remain unchanged.
+
+The browser search editor supports `tag:foo` and `tag:"foo bar"` tokens;
+native Spectrum suggestions can select names with spaces. Filters appear as
+removable chips. Search state is bookmarkable as `?q=...&tag=...&tag=...`
+with optional `view` and `offset` parameters, and supports popstate.
+Never encode session tokens or private bookmark data in these URLs.

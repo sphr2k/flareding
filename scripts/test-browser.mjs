@@ -3,7 +3,7 @@
  * Requires: bunx playwright install chromium
  *
  * Starts isolated local cf dev with an ephemeral account token, creates only
- * synthetic bookmarks, exercises Grid/List and pagination, and deletes them.
+ * synthetic bookmarks, exercises CardView and pagination, and deletes them.
  */
 import { chromium } from "playwright";
 import { randomUUID } from "node:crypto";
@@ -125,8 +125,40 @@ try {
   await page.goto(origin, { waitUntil: "domcontentloaded" });
   await page.getByLabel("API token").fill(token);
   await page.getByRole("button", { name: "Sign in" }).click();
-  await page.getByRole("radio", { name: "Cards", exact: true }).waitFor();
+  await page.locator('[role="gridcell"]').first().waitFor();
   await page.getByText("Synthetic bookmark 1").first().waitFor();
+  // Unified search: asynchronous tag: suggestions, keyboard selection,
+  // multi-tag AND, free-text and round-tripping bookmarked URL state.
+  const globalSearch = page.getByRole("combobox", { name: "Search bookmarks" });
+  await globalSearch.fill("tag:docs");
+  await page.getByRole("option", { name: "docs", exact: true }).waitFor();
+  await globalSearch.press("Enter");
+  await page.waitForFunction(() =>
+    new URL(location.href).searchParams.getAll("tag").includes("docs"),
+  );
+  await globalSearch.fill("tag:typescript");
+  await page.getByRole("option", { name: "typescript", exact: true }).waitFor();
+  await globalSearch.press("Enter");
+  await page.waitForFunction(() => new URL(location.href).searchParams.getAll("tag").length === 2);
+  await globalSearch.fill("Synthetic");
+  await page.waitForFunction(() => new URL(location.href).searchParams.get("q") === "Synthetic");
+  await page.locator('[role="gridcell"]').first().waitFor();
+  await page.reload();
+  await page.locator('[role="gridcell"]').first().waitFor();
+  if ((await page.getByRole("combobox", { name: "Search bookmarks" }).inputValue()) !== "Synthetic")
+    throw Error("Unified search text was not restored from URL");
+  if (new URL(page.url()).searchParams.getAll("tag").length !== 2)
+    throw Error("Multi-tag chip filters were not restored from URL");
+  await globalSearch.fill("");
+  await globalSearch.press("Backspace");
+  await page.waitForFunction(() => new URL(location.href).searchParams.getAll("tag").length === 1);
+  await globalSearch.press("Backspace");
+  await page.waitForFunction(() => new URL(location.href).searchParams.getAll("tag").length === 0);
+  await page.goto(origin);
+  await page.getByText("Synthetic bookmark 1").first().waitFor();
+  if (await page.getByRole("button", { name: "Tag filter", exact: true }).count())
+    throw Error("Obsolete Tag filter must not be present");
+
   await page.getByRole("radio", { name: "Unread", exact: true }).click();
   await page
     .getByRole("radio", { name: "Unread", exact: true })
@@ -215,7 +247,12 @@ try {
   await page.getByRole("button", { name: "Keep editing", exact: true }).click();
   if ((await titleInput.inputValue()) !== "Synthetic bookmark edited")
     throw new Error("Continuing edit lost changes");
-  await page.getByRole("combobox", { name: "Add tag" }).fill(newTag);
+  // Server-provided active tags must appear after asynchronous search.
+  const addTag = page.getByRole("combobox", { name: "Add tag" });
+  await addTag.fill("docs");
+  await page.getByRole("option", { name: "docs", exact: true }).waitFor();
+  await page.getByRole("option", { name: "docs", exact: true }).click();
+  await addTag.fill(newTag);
   await page.getByRole("option", { name: `Add “${newTag}”` }).waitFor();
   const tagFieldBox = await page.getByRole("combobox", { name: "Add tag" }).boundingBox();
   const suggestionsBox = await page.getByRole("listbox").boundingBox();
@@ -259,18 +296,38 @@ try {
     throw new Error("Bookmark CardView cards are too tall: " + Math.max(...cardHeights) + "px");
   }
 
-  await page.getByRole("radio", { name: "List", exact: true }).click();
-  const listCount = await page.locator('[role="row"]').count();
-  if (listCount < 4) throw new Error(`Expected at least 8 ListView rows, found ${listCount}`);
+  // The list view and its toggle are removed: there is only one CardView.
+  if (await page.getByRole("radio", { name: "List", exact: true }).count())
+    throw new Error("Removed List view toggle is still present");
+  if (!(await page.getByRole("grid", { name: "Bookmark cards" }).count()))
+    throw new Error("Cards must remain the only bookmark display");
+
   // Verify keyboard navigation and the native Spectrum dialog.
-  await page.getByRole("radio", { name: "Cards", exact: true }).click();
+  // Delete uses the pre-existing Linkding DELETE API, but only after a
+  // destructive Spectrum AlertDialog confirmation.
+  const deleteCandidate = page.getByRole("button", { name: "Actions for Synthetic bookmark 2" });
+  await deleteCandidate.click();
+  await page.getByRole("menuitem", { name: "Delete…" }).click();
+  const deleteDialog = page.getByRole("alertdialog", { name: "Delete bookmark?" });
+  await deleteDialog.waitFor();
+  await deleteDialog.getByRole("button", { name: "Cancel" }).click();
+  const retained = await api("GET", `/api/bookmarks/${created[1]}/`);
+  if (retained.status !== 200) throw new Error("Delete Cancel must retain bookmark");
+  await deleteCandidate.click();
+  await page.getByRole("menuitem", { name: "Delete…" }).click();
+  await deleteDialog.waitFor();
+  await deleteDialog.getByRole("button", { name: "Delete", exact: true }).click();
+  await page.getByText("Synthetic bookmark 2", { exact: true }).waitFor({ state: "hidden" });
+  const erased = await api("GET", `/api/bookmarks/${created[1]}/`);
+  if (erased.status !== 404) throw new Error("Confirmed Delete did not remove bookmark");
+
   await page.locator("body").click({ position: { x: 6, y: 6 } });
   await page.keyboard.press("/");
   const searchFocused = await page.evaluate(() => {
     const node = document.activeElement;
-    return node?.tagName === "INPUT" && node.getAttribute("type") === "search";
+    return node?.tagName === "INPUT" && node.getAttribute("role") === "combobox";
   });
-  if (!searchFocused) throw new Error("Slash key did not focus global Spectrum SearchField");
+  if (!searchFocused) throw new Error("Slash key did not focus unified Spectrum ComboBox");
   await page.keyboard.press("Escape");
   await page.locator("body").click({ position: { x: 6, y: 6 } });
   await page.keyboard.press("n");
@@ -342,7 +399,8 @@ try {
     }),
   );
   await settingsPage.goto(origin);
-  await settingsPage.getByRole("button", { name: "Settings" }).click();
+  await settingsPage.getByRole("button", { name: "Account" }).click();
+  await settingsPage.getByRole("menuitem", { name: "Settings" }).click();
   const settingsDialog = settingsPage.getByRole("dialog", { name: "Settings" });
   // Spectrum animates the initial dialog transform; compare settled geometry only.
   await settingsPage.waitForTimeout(500);
@@ -408,7 +466,7 @@ try {
   if (pageErrors.length) throw new Error(`Browser errors: ${pageErrors.length}`);
 
   console.log(
-    `Spectrum browser smoke succeeded: ${cardCount} grid items, ${listCount} list items, no JS errors.`,
+    `Spectrum browser smoke succeeded: ${cardCount} grid items, Delete confirmed, no JS errors.`,
   );
 } catch (error) {
   // Never include the token, cookies, or private export values in CI output.

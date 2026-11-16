@@ -1,4 +1,6 @@
 import { Button } from "@react-spectrum/s2/Button";
+import { DialogContainer } from "@react-spectrum/s2/Dialog";
+import { AlertDialog } from "@react-spectrum/s2/AlertDialog";
 import { CardView } from "@react-spectrum/s2/CardView";
 import { InlineAlert, Heading, Content } from "@react-spectrum/s2/InlineAlert";
 import { Provider } from "@react-spectrum/s2/Provider";
@@ -9,12 +11,18 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CollectionNavigation } from "./components/CollectionNavigation.js";
 import { AppHeader } from "./components/AppHeader.js";
-import { CollectionToolbar, type DisplayMode } from "./components/CollectionToolbar.js";
+import { CollectionToolbar } from "./components/CollectionToolbar.js";
 import { BookmarkDialog } from "./components/BookmarkDialog.js";
 import { SettingsDialog } from "./components/SettingsDialog.js";
 import { BookmarkCard } from "./components/BookmarkCard.js";
-import { BookmarkList } from "./components/BookmarkList.js";
 import type { BookmarkDTO } from "../api/linkding/v1/contract.js";
+import { flaredingV1BookmarkSearchOutput } from "../api/flareding/v1/contract.js";
+import {
+  readSearchState,
+  writeSearchState,
+  pendingTag,
+  stripPendingTag,
+} from "./lib/search-filters.js";
 
 interface BookmarkPage {
   count: number;
@@ -35,24 +43,26 @@ function useDebouncedValue(value: string, delay = 350) {
 }
 
 async function getBookmarks(
-  search: string,
+  query: string,
   view: BookmarkView,
-  tag: string,
+  tags: string[],
   offset: number,
 ): Promise<BookmarkPage> {
-  const url = new URL(
-    view === "archived" ? "/api/bookmarks/archived/" : "/api/bookmarks/",
-    window.location.origin,
-  );
-  url.searchParams.set("limit", "60");
-  url.searchParams.set("offset", String(offset));
-  if (search.trim()) url.searchParams.set("q", search.trim());
-  if (view === "unread") url.searchParams.set("unread", "true");
-  if (tag.trim()) url.searchParams.set("tag", tag.trim());
-  const response = await fetch(url, { credentials: "same-origin" });
+  const response = await fetch("/api/flareding/v1/bookmarks/search/", {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      query: pendingTag(query) === null ? query : stripPendingTag(query),
+      tags,
+      view,
+      limit: 60,
+      offset,
+    }),
+  });
   if (!response.ok)
     throw new Error(response.status === 401 ? "Session expired" : "Could not load bookmarks");
-  return response.json() as Promise<BookmarkPage>;
+  return flaredingV1BookmarkSearchOutput.parse(await response.json());
 }
 
 async function sendBookmark(
@@ -144,31 +154,54 @@ function BookmarkManager({
 }) {
   const cache = useQueryClient();
   const searchRef = useRef<TextFieldRef<HTMLInputElement>>(null);
-  const [search, setSearch] = useState("");
-  const [view, setView] = useState<BookmarkView>("all");
-  const [tagFilter, setTagFilter] = useState("");
+  const [urlState, setUrlState] = useState(() => readSearchState(window.location.search));
+  const { query: search, tags: tagFilters, view, offset } = urlState;
+  const setSearch = (query: string) =>
+    setUrlState((previous) => ({ ...previous, query, offset: 0 }));
+  const setTags = (tags: string[]) => setUrlState((previous) => ({ ...previous, tags, offset: 0 }));
+  const setView = (view: BookmarkView) =>
+    setUrlState((previous) => ({ ...previous, view, offset: 0 }));
+  const setOffset = (next: number | ((previous: number) => number)) =>
+    setUrlState((previous) => ({
+      ...previous,
+      offset: typeof next === "function" ? next(previous.offset) : next,
+    }));
   const debouncedSearch = useDebouncedValue(search);
-  const debouncedTag = useDebouncedValue(tagFilter);
-  const [display, setDisplay] = useState<DisplayMode>("cards");
+  useEffect(() => {
+    const current = window.location.search;
+    const next = writeSearchState(current, urlState);
+    if (next !== current.replace(/^\?/, "")) {
+      window.history.replaceState(
+        window.history.state,
+        "",
+        window.location.pathname + (next ? `?${next}` : "") + window.location.hash,
+      );
+    }
+  }, [urlState]);
+  useEffect(() => {
+    const restore = () => setUrlState(readSearchState(window.location.search));
+    window.addEventListener("popstate", restore);
+    return () => window.removeEventListener("popstate", restore);
+  }, []);
   const [isNarrow, setNarrow] = useState(() => window.matchMedia("(max-width: 767px)").matches);
   useEffect(() => {
-    // Spectrum CardView has a native minimum two-column grid. Below 768px,
-    // ListView keeps links readable without overriding CardView internals.
+    // Keep the mobile navigation compact; bookmarks always use CardView.
     const media = window.matchMedia("(max-width: 767px)");
     const sync = () => setNarrow(media.matches);
     sync();
     media.addEventListener("change", sync);
     return () => media.removeEventListener("change", sync);
   }, []);
-  const activeDisplay = isNarrow ? "list" : display;
-  const [offset, setOffset] = useState(0);
+
   const [adding, setAdding] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [editing, setEditing] = useState<BookmarkDTO | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<BookmarkDTO | null>(null);
+  const [deleteError, setDeleteError] = useState("");
 
   const { data, isPending, error } = useQuery({
-    queryKey: ["bookmarks", debouncedSearch, view, debouncedTag, offset],
-    queryFn: () => getBookmarks(debouncedSearch, view, debouncedTag, offset),
+    queryKey: ["bookmarks", debouncedSearch, view, tagFilters, offset],
+    queryFn: () => getBookmarks(debouncedSearch, view, tagFilters, offset),
     staleTime: 15_000,
   });
 
@@ -180,6 +213,22 @@ function BookmarkManager({
       ),
     onSuccess: async () => {
       await cache.invalidateQueries({ queryKey: ["bookmarks"] });
+    },
+  });
+
+  const remove = useMutation({
+    mutationFn: (bookmark: BookmarkDTO) => sendBookmark("DELETE", `/api/bookmarks/${bookmark.id}/`),
+    onSuccess: async () => {
+      if (data?.results.length === 1 && offset > 0) {
+        setOffset((previous) => Math.max(0, previous - 60));
+      }
+      await Promise.all([
+        cache.invalidateQueries({ queryKey: ["bookmarks"] }),
+        cache.invalidateQueries({ queryKey: ["tags"] }),
+      ]);
+    },
+    onError: (cause) => {
+      setDeleteError(cause instanceof Error ? cause.message : "Could not delete bookmark.");
     },
   });
 
@@ -206,6 +255,27 @@ function BookmarkManager({
   return (
     <>
       {settingsOpen && <SettingsDialog onClose={() => setSettingsOpen(false)} />}
+      <DialogContainer onDismiss={() => setConfirmDelete(null)}>
+        {confirmDelete && (
+          <AlertDialog
+            title="Delete bookmark?"
+            variant="destructive"
+            cancelLabel="Cancel"
+            primaryActionLabel="Delete"
+            autoFocusButton="cancel"
+            onCancel={() => setConfirmDelete(null)}
+            onPrimaryAction={() => {
+              const selected = confirmDelete;
+              setConfirmDelete(null);
+              setDeleteError("");
+              remove.mutate(selected);
+            }}
+          >
+            “{confirmDelete.title || confirmDelete.url}” will be permanently deleted. This cannot be
+            undone.
+          </AlertDialog>
+        )}
+      </DialogContainer>
       {(editing || adding) && (
         <BookmarkDialog
           key={editing?.id ?? "new"}
@@ -244,10 +314,9 @@ function BookmarkManager({
       >
         <AppHeader
           search={search}
-          onSearchChange={(value) => {
-            setSearch(value);
-            setOffset(0);
-          }}
+          onSearchChange={setSearch}
+          tags={tagFilters}
+          onTagsChange={setTags}
           searchRef={searchRef}
           onAddOpenChange={setAdding}
           onLogout={onLogout}
@@ -255,20 +324,13 @@ function BookmarkManager({
           isNarrow={isNarrow}
         />
         {!isNarrow && (
-          <CollectionNavigation
-            view={view}
-            onViewChange={(next) => {
-              setView(next);
-              setOffset(0);
-            }}
-            onAdd={() => setAdding(true)}
-          />
+          <CollectionNavigation view={view} onViewChange={setView} onAdd={() => setAdding(true)} />
         )}
         <main
           className={style({
             display: "flex",
             flexDirection: "column",
-            gap: 20,
+            gap: 24,
             gridArea: "content",
             minWidth: 0,
             minHeight: 0,
@@ -281,20 +343,16 @@ function BookmarkManager({
         >
           <CollectionToolbar
             view={view}
-            onViewChange={(next) => {
-              setView(next);
-              setOffset(0);
-            }}
-            display={activeDisplay}
+            onViewChange={setView}
             isNarrow={isNarrow}
-            onDisplayChange={setDisplay}
             count={data?.count}
-            tagFilter={tagFilter}
-            onTagFilterChange={(value) => {
-              setTagFilter(value);
-              setOffset(0);
-            }}
           />
+          {deleteError && (
+            <InlineAlert variant="negative">
+              <Heading>Could not delete bookmark</Heading>
+              <Content>{deleteError}</Content>
+            </InlineAlert>
+          )}
           {error && (
             <InlineAlert variant="negative">
               <Heading>Could not load bookmarks</Heading>
@@ -317,15 +375,15 @@ function BookmarkManager({
                   <Heading>No bookmarks found</Heading>
                   <Content>Change your search or filters, or add a bookmark.</Content>
                 </InlineAlert>
-              ) : activeDisplay === "cards" ? (
+              ) : (
                 <CardView
                   aria-label="Bookmark cards"
                   layout="waterfall"
-                  size="L"
+                  size={isNarrow ? "XL" : "L"}
                   density="compact"
                   variant="secondary"
                   items={data.results}
-                  dependencies={[view, archive.isPending]}
+                  dependencies={[view, archive.isPending, remove.isPending]}
                   // Adobe Photos example offsets the native CardView gutter via its public styles prop.
                   styles={style({ marginX: -16, alignSelf: "stretch" })}
                 >
@@ -334,17 +392,11 @@ function BookmarkManager({
                       bookmark={bookmark}
                       onEdit={setEditing}
                       onToggleArchive={(item) => archive.mutate(item)}
-                      isPending={archive.isPending}
+                      onDelete={setConfirmDelete}
+                      isPending={archive.isPending || remove.isPending}
                     />
                   )}
                 </CardView>
-              ) : (
-                <BookmarkList
-                  bookmarks={data.results}
-                  onEdit={setEditing}
-                  onToggleArchive={(item) => archive.mutate(item)}
-                  isPending={archive.isPending}
-                />
               )}
               {(offset > 0 || data.next) && (
                 <div
