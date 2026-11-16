@@ -3,7 +3,7 @@ import { ActionMenu, MenuItem } from "@react-spectrum/s2/ActionMenu";
 import { style } from "@react-spectrum/s2/style" with { type: "macro" };
 import { Image } from "@react-spectrum/s2/Image";
 import { Text } from "@react-spectrum/s2/ListView";
-import type { BookmarkDTO } from "../../api/bookmark-contract.js";
+import type { BookmarkDTO } from "../../api/linkding/v1/contract.js";
 import { fallbackIconDataUrl, normalizeSiteHost, trustedSiteIconSrc } from "../lib/site-icon.js";
 
 interface Props {

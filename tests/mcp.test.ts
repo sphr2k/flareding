@@ -247,7 +247,7 @@ describe("native MCP bookmark tools", () => {
     expect(tags.result.structuredContent?.count).toBe(1);
     expect(calls[1]).toEqual({
       op: "listMcpTags",
-      args: [{ limit: 20, offset: 0, sort: "name", order: "asc", q: "do" }],
+      args: [{ limit: 20, offset: 0, includeArchived: false, sort: "name", order: "asc", q: "do" }],
     });
     expect(
       (tags.result.structuredContent?.tags as Array<{ bookmark_count: number }>)[0]?.bookmark_count,
@@ -321,6 +321,7 @@ describe("native MCP tag-management tools", () => {
           {
             limit: 500,
             offset: 20,
+            includeArchived: false,
             sort: "count",
             order: "desc",
             q: "do",
@@ -330,9 +331,21 @@ describe("native MCP tag-management tools", () => {
         ],
       },
     ]);
+    const withArchive = await tool(
+      "list_tags",
+      { include_archived: true, query: "archived" },
+      token,
+      keys,
+      environment,
+    );
+    expect(withArchive.result.isError).not.toBe(true);
+    expect(calls[1]).toMatchObject({
+      op: "listMcpTags",
+      args: [{ includeArchived: true, q: "archived" }],
+    });
     const invalid = await tool("list_tags", { limit: 501 }, token, keys, environment);
     expect(invalid.result.isError).toBe(true);
-    expect(calls).toHaveLength(1);
+    expect(calls).toHaveLength(2);
   });
 
   it("passes 500 merge mappings to a single DO RPC and supports dry-run", async () => {

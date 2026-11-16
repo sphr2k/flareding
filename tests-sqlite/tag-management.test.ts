@@ -93,19 +93,20 @@ const options = {
 test("list_tags usage includes archived bookmarks, zero counts and stable pagination/sorting", () => {
   const f = fixture();
   try {
-    const all = listMcpTags(f.db, options);
+    const all = listMcpTags(f.db, { ...options, includeArchived: true });
     expect(all.count).toBe(10);
     expect(all.results.find((tag) => tag.name === "kube")?.bookmark_count).toBe(2);
     expect(all.results.find((tag) => tag.name === "docs")?.bookmark_count).toBe(3);
     expect(all.results.find((tag) => tag.name === "empty")?.bookmark_count).toBe(0);
     expect(all.results.every((tag) => tag.date_added === "2006-01-02T03:04:05.000Z")).toBe(true);
-    expect(listMcpTags(f.db, { ...options, q: "KUBE" }).results.map((t) => t.name)).toEqual([
-      "Kubernetes",
-      "kube",
-      "kubernetes",
-    ]);
+    expect(
+      listMcpTags(f.db, { ...options, includeArchived: true, q: "KUBE" }).results.map(
+        (t) => t.name,
+      ),
+    ).toEqual(["Kubernetes", "kube", "kubernetes"]);
     const counted = listMcpTags(f.db, {
       ...options,
+      includeArchived: true,
       minCount: 2,
       maxCount: 2,
       sort: "count",
@@ -115,6 +116,7 @@ test("list_tags usage includes archived bookmarks, zero counts and stable pagina
     expect(counted.results.map((t) => t.name)).toEqual(["Kubernetes", "k8s", "kube"]);
     const page = listMcpTags(f.db, {
       ...options,
+      includeArchived: true,
       minCount: 2,
       sort: "count",
       order: "desc",
@@ -123,12 +125,50 @@ test("list_tags usage includes archived bookmarks, zero counts and stable pagina
     });
     expect(page.count).toBe(4);
     expect(page.results.map((t) => t.name)).toEqual(["Kubernetes", "k8s"]);
-    expect(listMcpTags(f.db, { ...options, maxCount: 0 }).results.map((t) => t.name)).toEqual([
-      "empty",
-    ]);
     expect(
-      listMcpTags(f.db, { ...options, sort: "date_added", order: "desc", limit: 1 }).results,
+      listMcpTags(f.db, { ...options, includeArchived: true, maxCount: 0 }).results.map(
+        (t) => t.name,
+      ),
+    ).toEqual(["empty"]);
+    expect(
+      listMcpTags(f.db, {
+        ...options,
+        includeArchived: true,
+        sort: "date_added",
+        order: "desc",
+        limit: 1,
+      }).results,
     ).toHaveLength(1);
+  } finally {
+    f.close();
+  }
+});
+
+test("list_tags excludes archived-only tags by default and counts active bookmarks", () => {
+  const f = fixture();
+  try {
+    // Unused tags are still discoverable in the explicit full catalog.
+    f.sqlite
+      .query("INSERT INTO tags(name,created_at) VALUES (?,?)")
+      .run("archived-only", Date.now());
+    f.sqlite
+      .query(
+        "INSERT INTO bookmark_tags(bookmark_id,tag_id) SELECT 3,id FROM tags WHERE name='archived-only'",
+      )
+      .run();
+    const active = listMcpTags(f.db, options);
+    expect(active.count).toBe(9);
+    expect(active.results.map((tag) => tag.name)).not.toContain("archived-only");
+    expect(active.results.map((tag) => tag.name)).not.toContain("empty");
+    expect(active.results.find((tag) => tag.name === "kube")?.bookmark_count).toBe(1);
+    expect(active.results.find((tag) => tag.name === "docs")?.bookmark_count).toBe(2);
+    const all = listMcpTags(f.db, { ...options, includeArchived: true });
+    expect(all.count).toBe(11);
+    expect(all.results.find((tag) => tag.name === "archived-only")?.bookmark_count).toBe(1);
+    expect(all.results.find((tag) => tag.name === "empty")?.bookmark_count).toBe(0);
+    expect(all.results.find((tag) => tag.name === "docs")?.bookmark_count).toBe(3);
+    expect(listMcpTags(f.db, { ...options, maxCount: 0 }).count).toBe(0);
+    expect(listMcpTags(f.db, { ...options, includeArchived: true, maxCount: 0 }).count).toBe(1);
   } finally {
     f.close();
   }

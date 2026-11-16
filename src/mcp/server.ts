@@ -1,7 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/server";
 import { createMcpHandler } from "agents/mcp/server";
 import { z } from "zod";
-import { bookmarkCreate, bookmarkPatch, bookmarkDto, tagDto } from "../api/bookmark-contract.js";
+import { bookmarkCreate, bookmarkPatch, bookmarkDto, tagDto } from "../api/linkding/v1/contract.js";
 import { authorizeMcp } from "./access.js";
 import type { Env } from "../env.js";
 
@@ -165,11 +165,12 @@ export function createFlaredingMcp(env: Pick<Env, "BOOKMARKS">) {
     {
       title: "List bookmark tags with usage counts",
       description:
-        "List all tags including bookmark_count (archived + non-archived bookmarks). Filter by name or usage and sort by name, usage or creation date. Count reflects the full filtered collection before pagination.",
+        "List tags used by active bookmarks. include_archived=false by default; true adds archived and unused tags. bookmark_count counts active bookmarks by default or all bookmark associations when true. Filtering and pagination apply after counts.",
       inputSchema: z.object({
         query: z.string().trim().max(120).optional(),
         min_count: z.number().int().min(0).optional(),
         max_count: z.number().int().min(0).optional(),
+        include_archived: z.boolean().default(false),
         sort: z.enum(["name", "count", "date_added"]).default("name"),
         order: z.enum(["asc", "desc"]).default("asc"),
         limit: z.number().int().min(1).max(500).default(20),
@@ -178,10 +179,11 @@ export function createFlaredingMcp(env: Pick<Env, "BOOKMARKS">) {
       outputSchema: tagsResult,
       annotations: readOnly,
     },
-    async ({ query, min_count, max_count, sort, order, limit, offset }) => {
+    async ({ query, min_count, max_count, include_archived, sort, order, limit, offset }) => {
       const result = await account.listMcpTags({
         limit,
         offset,
+        includeArchived: include_archived,
         sort,
         order,
         ...(query ? { q: query } : {}),

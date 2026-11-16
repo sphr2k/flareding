@@ -1,4 +1,4 @@
-import type { BookmarkDTO } from "./bookmark-contract.js";
+import type { BookmarkDTO } from "./contract.js";
 
 /** linkding emits absolute favicon URLs. Keep storage host-independent. */
 export function withAbsoluteFavicon(bookmark: BookmarkDTO, requestUrl: string): BookmarkDTO {

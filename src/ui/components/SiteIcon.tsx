@@ -1,4 +1,4 @@
-import { faviconAccent } from "../lib/favicon-accent.js";
+import { analyzeFavicon } from "../lib/favicon-accent.js";
 import { style } from "@react-spectrum/s2/style" with { type: "macro" };
 import { useEffect, useState } from "react";
 import {
@@ -20,8 +20,10 @@ interface SiteIconProps {
 export function SiteIcon({ url, iconSrc, size = "normal", onAccent }: SiteIconProps) {
   const host = normalizeSiteHost(url);
   const [broken, setBroken] = useState(false);
+  const [lightBacking, setLightBacking] = useState(false);
   useEffect(() => {
     setBroken(false);
+    setLightBacking(false);
     onAccent?.(undefined);
   }, [iconSrc, onAccent]);
   const safeSrc = trustedSiteIconSrc(iconSrc ?? null, window.location.origin);
@@ -43,6 +45,7 @@ export function SiteIcon({ url, iconSrc, size = "normal", onAccent }: SiteIconPr
           overflow: "hidden",
         }),
         !safeSrc || broken ? style({ backgroundColor: "gray-100", color: "gray-800" }) : "",
+        safeSrc && !broken && lightBacking ? style({ backgroundColor: "gray-900" }) : "",
       ].join(" ")}
       style={{
         width: dimension,
@@ -60,13 +63,16 @@ export function SiteIcon({ url, iconSrc, size = "normal", onAccent }: SiteIconPr
           decoding="async"
           onLoad={(event) => {
             try {
-              onAccent?.(faviconAccent(host ?? "?", event.currentTarget));
+              const appearance = analyzeFavicon(host ?? "?", event.currentTarget);
+              setLightBacking(appearance.needsLightBacking);
+              onAccent?.(appearance.accent);
             } catch {
               onAccent?.(undefined);
             }
           }}
           onError={() => {
             setBroken(true);
+            setLightBacking(false);
             onAccent?.(undefined);
           }}
           style={{ width: "80%", height: "80%", objectFit: "contain" }}

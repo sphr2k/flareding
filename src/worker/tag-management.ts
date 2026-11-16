@@ -1,6 +1,6 @@
 import { asc, desc, eq, gte, inArray, lte, sql, and } from "drizzle-orm";
 import type { drizzle } from "drizzle-orm/durable-sqlite";
-import { bookmarkTags, tags } from "../db/schema.js";
+import { bookmarkTags, bookmarks, tags } from "../db/schema.js";
 
 type Db = ReturnType<typeof drizzle>;
 type TagRecord = { id: number; name: string };
@@ -26,8 +26,9 @@ const countLinks = sql<number>`count(${bookmarkTags.bookmarkId})`
 const countDistinctLinks = sql<number>`count(distinct ${bookmarkTags.bookmarkId})`.mapWith(Number);
 
 /**
- * Scoped exclusively to MCP. The linkding /api/tags/ DTO remains untouched.
- * Grouping and filtering run in SQLite before pagination, including archived bookmarks.
+ * MCP v1 overlay tag counts are scoped to active bookmarks by default.
+ * includeArchived=true adds archived bookmark associations and unused tags.
+ * No tag associations are modified by read-only filtering.
  */
 export function listMcpTags(
   db: Db,
@@ -37,6 +38,7 @@ export function listMcpTags(
     q?: string;
     minCount?: number;
     maxCount?: number;
+    includeArchived?: boolean;
     sort: "name" | "count" | "date_added";
     order: "asc" | "desc";
   },
@@ -51,14 +53,23 @@ export function listMcpTags(
       id: tags.id,
       name: tags.name,
       createdAt: tags.createdAt,
-      bookmarkCount: countLinks,
+      bookmarkCount: sql<number>`count(${bookmarks.id})`.mapWith(Number).as("bookmark_count"),
     })
     .from(tags)
     .leftJoin(bookmarkTags, eq(tags.id, bookmarkTags.tagId))
+    .leftJoin(
+      bookmarks,
+      and(
+        eq(bookmarkTags.bookmarkId, bookmarks.id),
+        options.includeArchived ? undefined : eq(bookmarks.isArchived, false),
+      ),
+    )
     .where(filteredNames)
     .groupBy(tags.id)
     .as("mcp_tag_counts");
   const constraints = and(
+    // Include unused tags only when the caller explicitly includes archives.
+    options.includeArchived ? undefined : gte(counts.bookmarkCount, 1),
     options.minCount !== undefined ? gte(counts.bookmarkCount, options.minCount) : undefined,
     options.maxCount !== undefined ? lte(counts.bookmarkCount, options.maxCount) : undefined,
   );

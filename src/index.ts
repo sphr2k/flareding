@@ -1,6 +1,7 @@
 import { OpenAPIHandler } from "@orpc/openapi/fetch";
 import { router as healthRoutes } from "./api/health.js";
-import { bookmarkRoutes } from "./api/bookmarks.js";
+import { linkdingV1Routes } from "./api/linkding/v1/routes.js";
+import { flaredingV1Routes } from "./api/flareding/v1/routes.js";
 import { authenticateToken, authError } from "./api/auth.js";
 import { handleSession, hasBrowserSession, isSameOriginMutation } from "./api/session.js";
 import type { Env } from "./env.js";
@@ -11,7 +12,7 @@ import { handleMcp } from "./mcp/server.js";
 export { BookmarkDO } from "./worker/bookmarks.js";
 
 const handler = new OpenAPIHandler(
-  { ...healthRoutes, ...bookmarkRoutes },
+  { ...healthRoutes, linkding: linkdingV1Routes, flaredingV1: flaredingV1Routes },
   {
     // Existing linkding clients expect a simple {"detail": "..."} JSON error.
     errorResponseBodyEncoder: (error) => ({

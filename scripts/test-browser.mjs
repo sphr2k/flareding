@@ -235,6 +235,17 @@ try {
   )
     throw new Error("Edited bookmark was not persisted");
 
+  // Truncated tag summaries disclose every tag on hover and keyboard focus.
+  const tagSummary = page.getByRole("button", { name: "Show all 5 bookmark tags" });
+  await tagSummary.hover();
+  await page.getByText("five", { exact: true }).waitFor();
+  await page.mouse.move(2, 2);
+  await page.getByText("five", { exact: true }).waitFor({ state: "hidden" });
+  await tagSummary.focus();
+  await page.getByText("five", { exact: true }).waitFor();
+  await page.keyboard.press("Escape");
+  await page.getByText("five", { exact: true }).waitFor({ state: "hidden" });
+
   const cardCount = await page.locator('[role="gridcell"]').count();
   if (cardCount < 8) throw new Error(`Expected at least 8 CardView items, found ${cardCount}`);
   const cardHeights = await page
@@ -293,6 +304,100 @@ try {
       fullPage: true,
     });
   }
+
+  // Isolated Access-mode UI test with fake session and synthetic token. No real
+  // personal data or credentials are requested, saved or captured in screenshots.
+  const settingsContext = await browser.newContext({
+    viewport: { width: 720, height: 720 },
+    permissions: ["clipboard-read", "clipboard-write"],
+  });
+  const settingsPage = await settingsContext.newPage();
+  const fakeToken = "synthetic-test-token-do-not-use";
+  await settingsPage.route("**/api/session/", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ authenticated: true, login: "access" }),
+    }),
+  );
+  await settingsPage.route("**/api/bookmarks/**", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ count: 0, next: null, previous: null, results: [] }),
+    }),
+  );
+  await settingsPage.route("**/api/tags/**", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ count: 0, next: null, previous: null, results: [] }),
+    }),
+  );
+  await settingsPage.route("**/auth/access/token", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ token: fakeToken }),
+    }),
+  );
+  await settingsPage.goto(origin);
+  await settingsPage.getByRole("button", { name: "Settings" }).click();
+  const settingsDialog = settingsPage.getByRole("dialog", { name: "Settings" });
+  // Spectrum animates the initial dialog transform; compare settled geometry only.
+  await settingsPage.waitForTimeout(500);
+  const tokenField = settingsPage.getByRole("textbox", { name: "API token", exact: true });
+  if ((await tokenField.inputValue()) === fakeToken)
+    throw new Error("Token revealed without explicit interaction");
+  const initialDialog = await settingsDialog.boundingBox();
+  const initialField = await tokenField.boundingBox();
+  const initialButton = await settingsPage
+    .getByRole("button", { name: "Reveal and copy API token" })
+    .boundingBox();
+  await tokenField.click();
+  await settingsPage.getByRole("button", { name: "Copy API token" }).waitFor();
+  await settingsPage.getByText("Token copied to clipboard.").waitFor();
+  if ((await settingsPage.evaluate(() => navigator.clipboard.readText())) !== fakeToken)
+    throw new Error("First reveal did not copy synthetic API token");
+  if ((await tokenField.inputValue()) !== fakeToken) throw new Error("Click did not reveal token");
+  const shownDialog = await settingsDialog.boundingBox();
+  const shownField = await tokenField.boundingBox();
+  const shownButton = await settingsPage
+    .getByRole("button", { name: "Copy API token" })
+    .boundingBox();
+  if (
+    !initialDialog ||
+    !initialField ||
+    !initialButton ||
+    !shownDialog ||
+    !shownField ||
+    !shownButton ||
+    Math.abs(initialDialog.height - shownDialog.height) > 2 ||
+    Math.abs(initialField.width - shownField.width) > 2 ||
+    Math.abs(initialField.y - shownField.y) > 2 ||
+    Math.abs(initialButton.width - shownButton.width) > 2
+  )
+    throw new Error(
+      "Settings dialog layout changed after token reveal: " +
+        JSON.stringify({
+          initialDialog,
+          shownDialog,
+          initialField,
+          shownField,
+          initialButton,
+          shownButton,
+        }),
+    );
+  await settingsPage.getByRole("button", { name: "Copy API token" }).click();
+  const copied = await settingsPage.evaluate(() => navigator.clipboard.readText());
+  if (copied !== fakeToken) throw new Error("Copy button did not copy synthetic token");
+  for (const width of [360, 720]) {
+    await settingsPage.setViewportSize({ width, height: 720 });
+    const bounds = await settingsDialog.boundingBox();
+    if (!bounds || bounds.width > width)
+      throw new Error("Settings dialog overflows narrow viewport");
+  }
+  await settingsContext.close();
 
   const iconCount = await page.locator('img[src*="/api/site-icons/"]').count();
   if (!iconCount)

@@ -10,8 +10,8 @@ import {
   pageOutput,
   tagCreate,
   tagDto,
-} from "./bookmark-contract.js";
-import { procedure } from "./base.js";
+} from "./contract.js";
+import { procedure } from "../../base.js";
 import { paginationLinks } from "./pagination.js";
 import { withAbsoluteFavicon } from "./favicon-url.js";
 
@@ -22,14 +22,14 @@ const notFound = (): never => {
 const duplicateUrl = (): never => {
   throw new ORPCError("CONFLICT", { message: "A bookmark with this URL already exists." });
 };
-const account = (context: { env: { BOOKMARKS: import("../env.js").Env["BOOKMARKS"] } }) =>
+const account = (context: { env: { BOOKMARKS: import("../../../env.js").Env["BOOKMARKS"] } }) =>
   context.env.BOOKMARKS.getByName("default");
 
 /**
  * External OpenAPIHandler routes, compatible with linkding's REST path style.
  * The Worker checks Authorization: Token for ALL routes in this router.
  */
-export const bookmarkRoutes = {
+export const linkdingV1Routes = {
   listBookmarks: procedure
     .meta(openapi({ method: "GET", path: "/bookmarks/" }))
     .input(bookmarkPageInput)
