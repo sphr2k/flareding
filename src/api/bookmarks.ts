@@ -19,6 +19,9 @@ const idInput = z.object({ id: z.coerce.number().int().positive() });
 const notFound = (): never => {
   throw new ORPCError("NOT_FOUND", { message: "Not found." });
 };
+const duplicateUrl = (): never => {
+  throw new ORPCError("CONFLICT", { message: "A bookmark with this URL already exists." });
+};
 const account = (context: { env: { BOOKMARKS: import("../env.js").Env["BOOKMARKS"] } }) =>
   context.env.BOOKMARKS.getByName("default");
 
@@ -91,10 +94,9 @@ export const bookmarkRoutes = {
     .output(bookmarkDto)
     .handler(async ({ context, input }) => {
       const { id, ...patch } = input;
-      return withAbsoluteFavicon(
-        (await account(context).patchBookmark(id, patch)) ?? notFound(),
-        context.requestUrl,
-      );
+      const bookmark = (await account(context).patchBookmark(id, patch)) ?? notFound();
+      if ("conflict" in bookmark) return duplicateUrl();
+      return withAbsoluteFavicon(bookmark, context.requestUrl);
     }),
 
   putBookmark: procedure
@@ -104,10 +106,9 @@ export const bookmarkRoutes = {
     .handler(async ({ context, input }) => {
       const { id, ...patch } = input;
       if (!patch.url) throw new ORPCError("BAD_REQUEST", { message: "URL is required for PUT" });
-      return withAbsoluteFavicon(
-        (await account(context).patchBookmark(id, patch)) ?? notFound(),
-        context.requestUrl,
-      );
+      const bookmark = (await account(context).patchBookmark(id, patch)) ?? notFound();
+      if ("conflict" in bookmark) return duplicateUrl();
+      return withAbsoluteFavicon(bookmark, context.requestUrl);
     }),
 
   archiveBookmark: procedure
