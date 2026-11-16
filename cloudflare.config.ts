@@ -14,13 +14,22 @@ export default defineConfig(({ mode }) => {
       compatibilityFlags: ["nodejs_compat", "enable_request_signal"],
       entrypoint,
       observability: { enabled: true },
-      assets: { runWorkerFirst: ["/api/*", "/auth/*"] },
+      assets: { runWorkerFirst: ["/api/*", "/auth/*", "/mcp"] },
       exports: {
         BookmarkDO: exports.durableObject({ storage: "sqlite" }),
       },
       env: {
         BOOKMARKS: bindings.durableObject({ worker: name, exportName: "BookmarkDO" }),
         API_TOKEN: bindings.secret(),
+        // Public Access application metadata. No credential material is embedded here.
+        ...(staging
+          ? {
+              MCP_ACCESS_AUD: bindings.text(
+                "cc047918d0a91911fb905709df0dcd5af801a06b23d06e023d5d8a1f5f7fc599",
+              ),
+              MCP_ACCESS_ISSUER: bindings.text("https://janw.cloudflareaccess.com"),
+            }
+          : {}),
         // Privileged secrets are opt-in and never required for normal releases.
         ...(enableImport ? { IMPORT_SECRET: bindings.secret() } : {}),
         ...(enableAccess

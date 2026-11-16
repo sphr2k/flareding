@@ -76,6 +76,30 @@ try {
   }
   if (!ready) throw new Error("Timed out starting real local SQLite DO");
 
+  // MCP is protected by a separate verified Access application JWT, never the
+  // linkding API token or a caller-controlled CF-Access-Client-ID header.
+  const mcpRequest = (headers = {}) =>
+    fetch(origin + "/mcp", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json, text/event-stream",
+        ...headers,
+      },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list", params: {} }),
+    });
+  assert.equal((await mcpRequest()).status, 401, "MCP must deny anonymous requests");
+  assert.equal(
+    (await mcpRequest({ Authorization: `Token ${token}` })).status,
+    401,
+    "Linkding token must not grant MCP access",
+  );
+  assert.equal(
+    (await mcpRequest({ "CF-Access-Jwt-Assertion": "forged" })).status,
+    401,
+    "Forged Access JWT must not grant MCP access",
+  );
+
   expectStatus(await request("GET", "/api/bookmarks/", undefined, false), 401, "anonymous read");
   expectStatus(
     await request("GET", "/api/site-icons/localhost", undefined, false),

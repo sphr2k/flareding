@@ -4,6 +4,8 @@ export interface Env {
   BOOKMARKS: DurableObjectNamespace<BookmarkDO>;
   ASSETS: Fetcher;
   API_TOKEN?: string;
+  MCP_ACCESS_AUD?: string;
+  MCP_ACCESS_ISSUER?: string;
   IMPORT_SECRET?: string;
   ACCESS_AUD?: string;
   ACCESS_TEAM_DOMAIN?: string;
