@@ -20,6 +20,7 @@ jobs:
       - run: bun run lint
       - run: bun run format:check
       - run: bun run test
+      - run: bun run test:sqlite
       - run: bun run build
       - run: bun run test:integration
       - name: Install Chromium for Spectrum UI smoke

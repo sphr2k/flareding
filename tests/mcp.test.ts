@@ -76,9 +76,31 @@ function env() {
       calls.push({ op: "deleteBookmark", args: [id] });
       return true;
     },
-    listTags: async (input: object) => {
-      calls.push({ op: "listTags", args: [input] });
-      return { count: 1, results: [{ id: 1, name: "docs", date_added: fixture.date_added }] };
+    listMcpTags: async (input: object) => {
+      calls.push({ op: "listMcpTags", args: [input] });
+      return {
+        count: 1,
+        results: [{ id: 1, name: "docs", date_added: fixture.date_added, bookmark_count: 4 }],
+      };
+    },
+    mergeMcpTags: async (merges: object[], dryRun: boolean) => {
+      calls.push({ op: "mergeMcpTags", args: [merges, dryRun] });
+      return merges.map((merge) => ({
+        target: (merge as { target: string }).target,
+        target_created: true,
+        sources_merged: (merge as { sources: string[] }).sources,
+        sources_not_found: [],
+        bookmarks_affected: 3,
+      }));
+    },
+    deleteMcpTags: async (names: string[], dryRun: boolean) => {
+      calls.push({ op: "deleteMcpTags", args: [names, dryRun] });
+      return names.map((name) => ({
+        name,
+        deleted: true,
+        bookmarks_affected: 1,
+        not_found: false,
+      }));
     },
   };
   const result = {
@@ -174,7 +196,7 @@ describe("native MCP access boundary", () => {
 });
 
 describe("native MCP bookmark tools", () => {
-  it("registers seven tools with correct destructive annotations", async () => {
+  it("registers nine tools with correct destructive annotations", async () => {
     const { result: environment } = env();
     const { token, keys } = await signed();
     const response = await handleMcp(request("tools/list", {}, token), environment, context, keys);
@@ -188,9 +210,19 @@ describe("native MCP bookmark tools", () => {
       "archive_bookmark",
       "delete_bookmark",
       "list_tags",
+      "merge_tags",
+      "delete_tags",
     ]);
     const del = body.result.tools.find((t: { name: string }) => t.name === "delete_bookmark");
     expect(del.annotations.destructiveHint).toBe(true);
+    expect(
+      body.result.tools.find((t: { name: string }) => t.name === "merge_tags").annotations
+        .destructiveHint,
+    ).toBe(true);
+    expect(
+      body.result.tools.find((t: { name: string }) => t.name === "delete_tags").annotations
+        .destructiveHint,
+    ).toBe(true);
   });
 
   it("enforces bounded search, invokes native DO RPC and exposes structured results", async () => {
@@ -213,7 +245,13 @@ describe("native MCP bookmark tools", () => {
     expect(calls).toHaveLength(1);
     const tags = await tool("list_tags", { query: "do" }, token, keys, environment);
     expect(tags.result.structuredContent?.count).toBe(1);
-    expect(calls[1]).toEqual({ op: "listTags", args: [{ limit: 20, offset: 0, q: "do" }] });
+    expect(calls[1]).toEqual({
+      op: "listMcpTags",
+      args: [{ limit: 20, offset: 0, sort: "name", order: "asc", q: "do" }],
+    });
+    expect(
+      (tags.result.structuredContent?.tags as Array<{ bookmark_count: number }>)[0]?.bookmark_count,
+    ).toBe(4);
   });
 
   it("validates inputs and delegates all writes to existing DO RPC", async () => {
@@ -253,5 +291,121 @@ describe("native MCP bookmark tools", () => {
     );
     expect(bad.result.isError).toBe(true);
     expect(calls).toHaveLength(4);
+  });
+});
+
+describe("native MCP tag-management tools", () => {
+  it("paginates, filters and sorts counts up to 500, rejecting larger pages", async () => {
+    const { result: environment, calls } = env();
+    const { token, keys } = await signed();
+    const tags = await tool(
+      "list_tags",
+      {
+        query: "do",
+        min_count: 0,
+        max_count: 100,
+        sort: "count",
+        order: "desc",
+        limit: 500,
+        offset: 20,
+      },
+      token,
+      keys,
+      environment,
+    );
+    expect(tags.result.structuredContent?.count).toBe(1);
+    expect(calls).toEqual([
+      {
+        op: "listMcpTags",
+        args: [
+          {
+            limit: 500,
+            offset: 20,
+            sort: "count",
+            order: "desc",
+            q: "do",
+            minCount: 0,
+            maxCount: 100,
+          },
+        ],
+      },
+    ]);
+    const invalid = await tool("list_tags", { limit: 501 }, token, keys, environment);
+    expect(invalid.result.isError).toBe(true);
+    expect(calls).toHaveLength(1);
+  });
+
+  it("passes 500 merge mappings to a single DO RPC and supports dry-run", async () => {
+    const { result: environment, calls } = env();
+    const { token, keys } = await signed();
+    const mappings = Array.from({ length: 500 }, (_, i) => ({
+      sources: ["legacy-" + i],
+      target: "canonical-" + i,
+    }));
+    const dry = await tool(
+      "merge_tags",
+      { merges: mappings, dry_run: true },
+      token,
+      keys,
+      environment,
+    );
+    expect(dry.result.structuredContent?.dry_run).toBe(true);
+    expect((dry.result.structuredContent?.results as unknown[]).length).toBe(500);
+    expect(calls).toEqual([{ op: "mergeMcpTags", args: [mappings, true] }]);
+    const invalid = await tool(
+      "merge_tags",
+      {
+        merges: [...mappings, { sources: ["oops"], target: "extra" }],
+      },
+      token,
+      keys,
+      environment,
+    );
+    expect(invalid.result.isError).toBe(true);
+    expect(calls).toHaveLength(1);
+    const write = await tool(
+      "merge_tags",
+      {
+        merges: [{ sources: ["Kubernetes"], target: "kubernetes" }],
+      },
+      token,
+      keys,
+      environment,
+    );
+    expect(write.result.structuredContent?.dry_run).toBe(false);
+    expect(calls[1]).toEqual({
+      op: "mergeMcpTags",
+      args: [[{ sources: ["Kubernetes"], target: "kubernetes" }], false],
+    });
+  });
+
+  it("supports batch dry-run deletion with 500 maximum names", async () => {
+    const { result: environment, calls } = env();
+    const { token, keys } = await signed();
+    const dry = await tool(
+      "delete_tags",
+      { names: ["#", "+", "1709"], dry_run: true },
+      token,
+      keys,
+      environment,
+    );
+    expect(dry.result.structuredContent?.dry_run).toBe(true);
+    expect(calls).toEqual([
+      {
+        op: "deleteMcpTags",
+        args: [["#", "+", "1709"], true],
+      },
+    ]);
+    const invalid = await tool(
+      "delete_tags",
+      {
+        names: Array.from({ length: 501 }, (_, i) => String(i)),
+      },
+      token,
+      keys,
+      environment,
+    );
+    expect(invalid.result.isError).toBe(true);
+    expect(calls).toHaveLength(1);
   });
 });

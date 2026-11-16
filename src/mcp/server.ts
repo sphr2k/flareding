@@ -16,7 +16,24 @@ const pageResult = z.object({
   count: z.number().int().nonnegative(),
   bookmarks: z.array(bookmarkDto),
 });
-const tagsResult = z.object({ count: z.number().int().nonnegative(), tags: z.array(tagDto) });
+const tagsResult = z.object({
+  count: z.number().int().nonnegative(),
+  tags: z.array(tagDto.extend({ bookmark_count: z.number().int().nonnegative() })),
+});
+const mergeResult = z.object({
+  target: z.string(),
+  target_created: z.boolean(),
+  sources_merged: z.array(z.string()),
+  sources_not_found: z.array(z.string()),
+  bookmarks_affected: z.number().int().nonnegative(),
+  error: z.string().optional(),
+});
+const deleteTagResult = z.object({
+  name: z.string(),
+  deleted: z.boolean(),
+  bookmarks_affected: z.number().int().nonnegative(),
+  not_found: z.boolean(),
+});
 
 function ok<T extends object>(data: T) {
   return {
@@ -144,17 +161,82 @@ export function createFlaredingMcp(env: Pick<Env, "BOOKMARKS">) {
   server.registerTool(
     "list_tags",
     {
-      title: "List bookmark tags",
+      title: "List bookmark tags with usage counts",
       description:
-        "List tag names and IDs, optionally filtering by case-insensitive substring. Results are paginated (maximum 50).",
-      inputSchema: z.object({ query: z.string().trim().max(120).optional(), ...page }),
+        "List all tags including bookmark_count (archived + non-archived bookmarks). Filter by name or usage and sort by name, usage or creation date. Count reflects the full filtered collection before pagination.",
+      inputSchema: z.object({
+        query: z.string().trim().max(120).optional(),
+        min_count: z.number().int().min(0).optional(),
+        max_count: z.number().int().min(0).optional(),
+        sort: z.enum(["name", "count", "date_added"]).default("name"),
+        order: z.enum(["asc", "desc"]).default("asc"),
+        limit: z.number().int().min(1).max(500).default(20),
+        offset: page.offset,
+      }),
       outputSchema: tagsResult,
       annotations: readOnly,
     },
-    async ({ query, limit, offset }) => {
-      const result = await account.listTags({ limit, offset, ...(query ? { q: query } : {}) });
+    async ({ query, min_count, max_count, sort, order, limit, offset }) => {
+      const result = await account.listMcpTags({
+        limit,
+        offset,
+        sort,
+        order,
+        ...(query ? { q: query } : {}),
+        ...(min_count !== undefined ? { minCount: min_count } : {}),
+        ...(max_count !== undefined ? { maxCount: max_count } : {}),
+      });
       return ok({ count: result.count, tags: result.results });
     },
+  );
+
+  server.registerTool(
+    "merge_tags",
+    {
+      title: "Merge or rename tags in batches",
+      description:
+        "Merge up to 500 source-to-target mappings in one call. Rename is a one-source merge; target is created when absent. Case-only renames canonicalize existing spelling variants. Each mapping commits atomically and a failed mapping does not roll back others. dry_run previews the full batch sequentially without writes. Bookmark date_modified never changes.",
+      inputSchema: z.object({
+        merges: z
+          .array(
+            z
+              .object({
+                sources: z.array(z.string()),
+                target: z.string(),
+              })
+              .strict(),
+          )
+          .max(500),
+        dry_run: z.boolean().default(false),
+      }),
+      outputSchema: z.object({ dry_run: z.boolean(), results: z.array(mergeResult) }),
+      annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
+    },
+    async ({ merges, dry_run }) =>
+      ok({
+        dry_run,
+        results: await account.mergeMcpTags(merges, dry_run),
+      }),
+  );
+
+  server.registerTool(
+    "delete_tags",
+    {
+      title: "Delete unused or unwanted tags in batches",
+      description:
+        "Delete up to 500 named tags and their bookmark associations, preserving bookmarks and date_modified. dry_run previews deletions without writing; deleted=true then means 'would delete'. Names are matched exactly.",
+      inputSchema: z.object({
+        names: z.array(z.string().trim().min(1).max(120)).max(500),
+        dry_run: z.boolean().default(false),
+      }),
+      outputSchema: z.object({ dry_run: z.boolean(), results: z.array(deleteTagResult) }),
+      annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
+    },
+    async ({ names, dry_run }) =>
+      ok({
+        dry_run,
+        results: await account.deleteMcpTags(names, dry_run),
+      }),
   );
   return server;
 }
