@@ -126,7 +126,9 @@ export function createFlaredingMcp(env: Pick<Env, "BOOKMARKS">) {
     },
     async ({ id, ...patch }) => {
       const bookmark = await account.patchBookmark(id, patch);
-      return bookmark ? ok({ bookmark }) : error("Bookmark not found");
+      if (!bookmark) return error("Bookmark not found");
+      if ("conflict" in bookmark) return error("A bookmark with this URL already exists.");
+      return ok({ bookmark });
     },
   );
 

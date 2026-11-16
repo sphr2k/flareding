@@ -221,10 +221,23 @@ export class BookmarkDO extends DurableObject<Env> {
     });
   }
 
-  async patchBookmark(id: number, input: BookmarkPatch): Promise<BookmarkDTO | null> {
+  async patchBookmark(
+    id: number,
+    input: BookmarkPatch,
+  ): Promise<BookmarkDTO | null | { conflict: "url" }> {
     return this.db.transaction((tx) => {
       const existing = tx.select().from(bookmarks).where(eq(bookmarks.id, id)).get();
       if (!existing) return null;
+      // Resolve URL conflicts before SQLite's UNIQUE index raises a 500.
+      // The check and update execute in the same transaction.
+      if (input.url !== undefined && input.url !== existing.urlKey) {
+        const duplicate = tx
+          .select({ id: bookmarks.id })
+          .from(bookmarks)
+          .where(eq(bookmarks.urlKey, input.url))
+          .get();
+        if (duplicate && duplicate.id !== id) return { conflict: "url" as const };
+      }
       const values = {
         ...(input.url !== undefined ? { url: input.url, urlKey: input.url } : {}),
         ...(input.title !== undefined ? { title: input.title } : {}),

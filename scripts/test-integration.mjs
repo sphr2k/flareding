@@ -276,8 +276,39 @@ try {
   assert.equal(duplicate.body.id, id);
   assert.equal(duplicate.body.title, "Same URL Updated");
 
+  // PATCH/PUT collisions must report HTTP 409 and leave both records untouched.
+  const otherUrl = `https://example.com/flareding-other-${randomUUID()}`;
+  const other = await request("POST", "/api/bookmarks/", {
+    url: otherUrl,
+    title: "Existing destination",
+  });
+  expectStatus(other, 201, "create duplicate target");
+  for (const method of ["PATCH", "PUT"]) {
+    const conflict = await request(method, `/api/bookmarks/${id}/`, {
+      url: otherUrl,
+      title: "Must not be saved",
+      tag_names: ["must-not-be-saved"],
+    });
+    expectStatus(conflict, 409, `${method} duplicate URL conflict`);
+    assert.equal(conflict.body.detail, "A bookmark with this URL already exists.");
+  }
   const read = await request("GET", `/api/bookmarks/${id}/`);
   expectStatus(read, 200, "read");
+  assert.equal(read.body.title, "Same URL Updated");
+  assert.deepEqual(read.body.tag_names, ["cloudflare", "drizzle"]);
+  const otherUnchanged = await request("GET", `/api/bookmarks/${other.body.id}/`);
+  expectStatus(otherUnchanged, 200, "duplicate target unchanged");
+  assert.equal(otherUnchanged.body.title, "Existing destination");
+  expectStatus(
+    await request("PATCH", `/api/bookmarks/${id}/`, { url }),
+    200,
+    "patch with unchanged URL",
+  );
+  expectStatus(
+    await request("DELETE", `/api/bookmarks/${other.body.id}/`),
+    204,
+    "remove duplicate target",
+  );
   assert.equal(read.body.url, url);
   expectStatus(
     await request("PATCH", `/api/bookmarks/${id}/`, { notes: "Patched", tag_names: ["sqlite"] }),
