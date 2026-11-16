@@ -325,3 +325,30 @@ use `redirect: "manual"` and explicitly reject redirects.
 Note: Under future Cloudflare Access enforcement, the Cache API availability
 is dependent on Access topology; the resolver safely falls back to uncached
 fetches if the edge cache is not available.
+
+## Native MCP (staging)
+
+`GET/POST /mcp` is routed to the Cloudflare Worker before static assets. The
+native, stateless MCP v2 Server uses Cloudflare Agents `createMcpHandler` and
+the **same** `BOOKMARKS.getByName("default")` Durable Object RPCs as the linkding
+REST API; no duplicate bookmarks, HTTP self-calls or MCP Durable Object.
+
+Tools: `search_bookmarks`, `get_bookmark`, `create_bookmark` (URL upsert),
+`update_bookmark`, `archive_bookmark`, `delete_bookmark`, `list_tags`. Searches
+and tags use bounded pagination (1–50 results); deletion is marked destructive.
+Text matching is substring-based, not yet full-text search.
+
+Cloudflare Access protects only the deployed MCP path, not `/api/*` or the
+SPA. The staging Access application **Flareding MCP Staging Service Auth** has
+a path-scoped `flareding-staging.janwer.workers.dev/mcp` destination and
+permits only the dedicated Gateway service token. The Worker independently
+validates Cloudflare's **signed JWT** from `Cf-Access-Jwt-Assertion` using the
+configured team JWKS, exact issuer and application audience; it never trusts
+caller-supplied `CF-Access-Client-*` headers or the optional `ctx.access`
+(which may be unavailable behind Workers Static Assets). Absent configuration
+fails closed with HTTP 503; invalid or missing assertions return HTTP 401.
+
+Client OAuth remains Cloudflare MCP Portal's responsibility. The Gateway
+registers the external Worker endpoint with its own Access Service Auth
+credentials, without deploying this Worker or altering the REST UI session.
+Any production MCP rollout requires its own Access application/audience.

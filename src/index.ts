@@ -7,6 +7,7 @@ import type { Env } from "./env.js";
 import { accessMode, accessReady, handleAccessSession } from "./api/access.js";
 import { handlePinboardAdmin, isImportAdminPath } from "./import/admin-api.js";
 import { handleSiteIcon } from "./worker/site-icons.js";
+import { handleMcp } from "./mcp/server.js";
 export { BookmarkDO } from "./worker/bookmarks.js";
 
 const handler = new OpenAPIHandler(
@@ -22,6 +23,7 @@ const handler = new OpenAPIHandler(
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const path = new URL(request.url).pathname;
+    if (path === "/mcp") return handleMcp(request, env, ctx);
     // Must remain outside Access-bypassed /api/*.
     if (path === "/auth/access/session") return handleAccessSession(request, env);
     if (path.startsWith("/api/")) {
