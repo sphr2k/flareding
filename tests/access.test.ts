@@ -4,6 +4,7 @@ import {
   accessMode,
   accessReady,
   handleAccessSession,
+  handleAccessToken,
 } from "../src/api/access.js";
 import { handleSession, hasBrowserSession } from "../src/api/session.js";
 import { exportJWK, generateKeyPair, SignJWT } from "jose";
@@ -98,5 +99,40 @@ describe("Cloudflare Access OIDC browser authentication", () => {
     });
     expect(await hasBrowserSession(apiRequest, baseConfig.SESSION_SECRET)).toBe(true);
     expect(await hasBrowserSession(apiRequest, baseConfig.API_TOKEN)).toBe(false);
+    const revealRequest = (token: string | undefined, from = origin, method = "POST") =>
+      new Request(origin + "/auth/access/token", {
+        method,
+        headers: {
+          Origin: from,
+          ...(token ? { "Cf-Access-Jwt-Assertion": token } : {}),
+          Cookie: cookie.split(";")[0],
+        },
+      });
+    expect((await handleAccessToken(revealRequest(undefined), baseConfig, jwks)).status).toBe(401);
+    expect(
+      (
+        await handleAccessToken(
+          revealRequest(correct, "https://attacker.example"),
+          baseConfig,
+          jwks,
+        )
+      ).status,
+    ).toBe(403);
+    expect(
+      (await handleAccessToken(revealRequest(correct, origin, "GET"), baseConfig, jwks)).status,
+    ).toBe(405);
+    expect(
+      (
+        await handleAccessToken(
+          revealRequest(await makeToken("outsider@example.org", baseConfig.ACCESS_AUD!)),
+          baseConfig,
+          jwks,
+        )
+      ).status,
+    ).toBe(401);
+    const tokenResponse = await handleAccessToken(revealRequest(correct), baseConfig, jwks);
+    expect(tokenResponse.status).toBe(200);
+    expect(tokenResponse.headers.get("Cache-Control")).toBe("no-store");
+    expect(await tokenResponse.json()).toEqual({ token: baseConfig.API_TOKEN });
   });
 });

@@ -4,7 +4,7 @@ import * as entrypoint from "./src/index.ts" with { type: "cf-worker" };
 export default defineConfig(({ mode }) => {
   // Explicit --mode staging; never point a staging deployment at production DOs.
   const staging = mode === "staging" || mode === "staging-access" || mode === "staging-import";
-  const enableAccess = mode === "staging-access";
+  const enableAccess = staging;
   const enableImport = mode === "staging-import";
   const name = staging ? "flareding-staging" : "flareding";
   return {
@@ -13,6 +13,11 @@ export default defineConfig(({ mode }) => {
       compatibilityDate: "2026-11-11",
       compatibilityFlags: ["nodejs_compat", "enable_request_signal"],
       entrypoint,
+      // Bind the public bookmark URL to the existing staging Worker/SQLite DO.
+      domains: staging ? ["bookmarks.janwerner.de"] : [],
+      // Existing MCP Service Auth still uses flareding-staging.janwer.workers.dev/mcp.
+      workersDev: true,
+      previewUrls: true,
       observability: { enabled: true },
       assets: { runWorkerFirst: ["/api/*", "/auth/*", "/mcp"] },
       exports: {
@@ -30,7 +35,7 @@ export default defineConfig(({ mode }) => {
               MCP_ACCESS_ISSUER: bindings.text("https://janw.cloudflareaccess.com"),
             }
           : {}),
-        // Privileged secrets are opt-in and never required for normal releases.
+        // Staging always uses Access for browser login; external APIs retain Token auth.
         ...(enableImport ? { IMPORT_SECRET: bindings.secret() } : {}),
         ...(enableAccess
           ? {

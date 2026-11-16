@@ -11,6 +11,7 @@ interface Props {
   onAddOpenChange: (open: boolean) => void;
   isNarrow: boolean;
   onLogout: () => void;
+  onSettings?: () => void;
 }
 
 export function AppHeader({
@@ -19,6 +20,7 @@ export function AppHeader({
   searchRef,
   onAddOpenChange,
   onLogout,
+  onSettings,
   isNarrow,
 }: Props) {
   return (
@@ -66,6 +68,11 @@ export function AppHeader({
       {isNarrow && (
         <Button variant="accent" onPress={() => onAddOpenChange(true)}>
           + Add
+        </Button>
+      )}
+      {onSettings && (
+        <Button variant="secondary" onPress={onSettings}>
+          Settings
         </Button>
       )}
       <Button variant="secondary" onPress={onLogout}>

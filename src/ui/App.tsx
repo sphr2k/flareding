@@ -11,6 +11,7 @@ import { CollectionNavigation } from "./components/CollectionNavigation.js";
 import { AppHeader } from "./components/AppHeader.js";
 import { CollectionToolbar, type DisplayMode } from "./components/CollectionToolbar.js";
 import { BookmarkDialog } from "./components/BookmarkDialog.js";
+import { SettingsDialog } from "./components/SettingsDialog.js";
 import { BookmarkCard } from "./components/BookmarkCard.js";
 import { BookmarkList } from "./components/BookmarkList.js";
 import type { BookmarkDTO } from "../api/bookmark-contract.js";
@@ -134,7 +135,13 @@ function Login({ onLogin }: { onLogin: () => void }) {
   );
 }
 
-function BookmarkManager({ onLogout }: { onLogout: () => void }) {
+function BookmarkManager({
+  onLogout,
+  accessLogin,
+}: {
+  onLogout: () => void;
+  accessLogin: boolean;
+}) {
   const cache = useQueryClient();
   const searchRef = useRef<TextFieldRef<HTMLInputElement>>(null);
   const [search, setSearch] = useState("");
@@ -156,6 +163,7 @@ function BookmarkManager({ onLogout }: { onLogout: () => void }) {
   const activeDisplay = isNarrow ? "list" : display;
   const [offset, setOffset] = useState(0);
   const [adding, setAdding] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [editing, setEditing] = useState<BookmarkDTO | null>(null);
 
   const { data, isPending, error } = useQuery({
@@ -197,6 +205,7 @@ function BookmarkManager({ onLogout }: { onLogout: () => void }) {
 
   return (
     <>
+      {settingsOpen && <SettingsDialog onClose={() => setSettingsOpen(false)} />}
       {(editing || adding) && (
         <BookmarkDialog
           key={editing?.id ?? "new"}
@@ -242,6 +251,7 @@ function BookmarkManager({ onLogout }: { onLogout: () => void }) {
           searchRef={searchRef}
           onAddOpenChange={setAdding}
           onLogout={onLogout}
+          onSettings={accessLogin ? () => setSettingsOpen(true) : undefined}
           isNarrow={isNarrow}
         />
         {!isNarrow && (
@@ -391,6 +401,17 @@ export function App() {
           login?: "access" | "token";
         };
         if (!active) return;
+        // Keep legacy workers.dev MCP and API endpoints, but use the canonical
+        // Access-protected hostname for interactive sessions.
+        if (
+          info.login === "access" &&
+          window.location.hostname === "flareding-staging.janwer.workers.dev"
+        ) {
+          window.location.replace(
+            `https://bookmarks.janwerner.de${window.location.pathname}${window.location.search}${window.location.hash}`,
+          );
+          return;
+        }
         setLoginMode(info.login === "access" ? "access" : "token");
         if (info.authenticated || info.login !== "access") {
           setAuthenticated(info.authenticated);
@@ -457,7 +478,7 @@ export function App() {
         {authenticated === null ? (
           <StatusLight variant="informative">Checking session…</StatusLight>
         ) : authenticated ? (
-          <BookmarkManager onLogout={logout} />
+          <BookmarkManager onLogout={logout} accessLogin={loginMode === "access"} />
         ) : loginMode === "access" ? (
           <main
             className={style({ display: "flex", flexDirection: "column", gap: 16, maxWidth: 480 })}
