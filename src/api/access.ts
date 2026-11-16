@@ -112,6 +112,31 @@ export async function handleAccessSession(
   );
 }
 
+/** Reveal the existing linkding API credential to the explicitly authorized Access user.
+ * Unlike /api/*, this endpoint never accepts a token-authenticated browser session.
+ * Always require a fresh, verified Access JWT and same-origin POST. No storage or caching.
+ */
+export async function handleAccessToken(
+  request: Request,
+  env: Env,
+  keySource?: JWTVerifyGetKey,
+): Promise<Response> {
+  const headers = { "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" };
+  if (request.method !== "POST")
+    return Response.json({ detail: "Method not allowed." }, { status: 405, headers });
+  if (!isSameOriginMutation(request))
+    return Response.json({ detail: "Forbidden." }, { status: 403, headers });
+  if (!configured(env) || !env.API_TOKEN)
+    return Response.json({ detail: "Access unavailable." }, { status: 503, headers });
+  const jwt = request.headers.get("Cf-Access-Jwt-Assertion");
+  if (!jwt || !(await verifyAccessIdentity(jwt, env, keySource)))
+    return Response.json(
+      { detail: "Cloudflare Access authorization required." },
+      { status: 401, headers },
+    );
+  return Response.json({ token: env.API_TOKEN }, { headers });
+}
+
 // Export only the standard local JWKS helper for test fixtures; the Worker
 // always gets a remote Cloudflare-signed keyset on real requests.
 export { createLocalJWKSet };

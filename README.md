@@ -208,9 +208,24 @@ depends on the returned rows and index access paths, not only query count.
 The Workers Paid account subscription is active, but plan activation does not
 remove the need for bounded queries and monitoring.
 
-## Cloudflare Access / OIDC rollout (staging, planned)
+## Cloudflare Access / OIDC on bookmarks.janwerner.de
 
-The application supports a verified Cloudflare Access-to-HttpOnly-session
+The existing `flareding-staging` Worker and its SQLite Durable Object serve
+`https://bookmarks.janwerner.de`. Keep the repository and Worker name
+`flareding`; the domain is a user-facing alias, not a data migration.
+
+Access enforces an owner-only browser login for `bookmarks.janwerner.de`.
+The narrower `/api/*` Access app has a Bypass policy so linkding-compatible
+`Authorization: Token` clients continue to work; the Worker still authenticates
+all API requests. The preexisting `/mcp` Access Service Token is scoped to
+the old staging hostname and is not changed by this rollout.
+
+UI Settings reveals the API token only through `POST /auth/access/token`,
+which checks a fresh signed Access JWT (issuer, audience, owner email) and Origin.
+No token is stored in local storage or a cookie. The token is held only in
+the open Settings dialog, served with no-store and removed on close.
+
+The application uses a verified Cloudflare Access-to-HttpOnly-session
 exchange at `POST /auth/access/session`. It requires these **separate**
 Cloudflare Worker secrets (not committed):
 
@@ -222,7 +237,7 @@ Cloudflare Worker secrets (not committed):
 The app validates Access RS256 JWT signing keys, expected issuer/audience,
 email allowlist and browser Origin. A partial configuration fails closed.
 When configured, the SPA requests a session after Cloudflare login;
-the API token is never sent to the browser and the token-based web-login form
+the API token is not sent to the browser except on explicit Settings reveal, and the token-based web-login form
 is disabled.
 
 Important: **Do not enable Worker-level Access** on Flareding: it would intercept
@@ -240,14 +255,12 @@ authenticate into a bookmark application.
 
 ### Safe environment-specific Cloudflare bindings
 
-Default and normal staging releases require only the existing API_TOKEN.
+Default staging releases require API_TOKEN and the four Access secrets below.
 Privileged bindings are never required during ordinary deployment:
 
 - staging-import mode is intended only for local import integration tests.
-- staging-access mode adds the Access JWT/session keys for a dedicated
-  owner-only pilot. Use it only after a specific Access bypass app has been
-  verified to preserve the original Token API.
-- staging mode keeps both privileged capabilities absent by default.
+- staging and staging-access both enable owner-only Access login.
+- staging mode excludes only the privileged import credential.
 
 After Access secrets are deployed, a plain Worker code redeploy must not
 be assumed to revoke them. Use cf workers secrets delete for rollback.

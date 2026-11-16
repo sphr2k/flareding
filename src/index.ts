@@ -4,7 +4,7 @@ import { bookmarkRoutes } from "./api/bookmarks.js";
 import { authenticateToken, authError } from "./api/auth.js";
 import { handleSession, hasBrowserSession, isSameOriginMutation } from "./api/session.js";
 import type { Env } from "./env.js";
-import { accessMode, accessReady, handleAccessSession } from "./api/access.js";
+import { accessMode, accessReady, handleAccessSession, handleAccessToken } from "./api/access.js";
 import { handlePinboardAdmin, isImportAdminPath } from "./import/admin-api.js";
 import { handleSiteIcon } from "./worker/site-icons.js";
 import { handleMcp } from "./mcp/server.js";
@@ -26,6 +26,7 @@ export default {
     if (path === "/mcp") return handleMcp(request, env, ctx);
     // Must remain outside Access-bypassed /api/*.
     if (path === "/auth/access/session") return handleAccessSession(request, env);
+    if (path === "/auth/access/token") return handleAccessToken(request, env);
     if (path.startsWith("/api/")) {
       if (isImportAdminPath(path)) return handlePinboardAdmin(request, env);
       if (path === "/api/session/") {
