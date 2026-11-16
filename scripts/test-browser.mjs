@@ -100,6 +100,8 @@ try {
     args: ["--no-sandbox"],
   });
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  // Cloudflare local Vite startup can finish health checks before the first HTML bundle.
+  page.setDefaultNavigationTimeout(60_000);
   page.on("pageerror", (error) => pageErrors.push(error.message));
   // No remote DNS/HTTP in visual tests: icons are mocked per unique host.
   const iconRequests = new Set();
@@ -130,16 +132,52 @@ try {
   // Unified search: asynchronous tag: suggestions, keyboard selection,
   // multi-tag AND, free-text and round-tripping bookmarked URL state.
   const globalSearch = page.getByRole("combobox", { name: "Search bookmarks" });
+  // Native highlighting must win over the raw typed fragment ("d").
+  // This also covers Enter bubbling from the Spectrum ComboBox into the
+  // surrounding unified-search surface.
+  await globalSearch.fill("tag:d");
+  await page.getByRole("option", { name: "docs", exact: true }).waitFor();
+  await globalSearch.press("ArrowDown");
+  const focusedOption = await globalSearch.evaluate((input) => {
+    const id = input.getAttribute("aria-activedescendant");
+    return id ? document.getElementById(id)?.textContent?.trim() : null;
+  });
+  if (focusedOption !== "cloudflare")
+    throw new Error("Native option highlight unexpected: " + focusedOption);
+  await globalSearch.press("Enter");
+  await page.waitForFunction(() => new URL(location.href).searchParams.getAll("tag").length === 1);
+  if (!new URL(page.url()).searchParams.getAll("tag").includes("cloudflare"))
+    throw new Error("Enter did not select the highlighted Spectrum suggestion");
+  await globalSearch.fill("");
+  await globalSearch.press("Backspace");
+  await page.waitForFunction(() => !new URL(location.href).searchParams.has("tag"));
+
   await globalSearch.fill("tag:docs");
   await page.getByRole("option", { name: "docs", exact: true }).waitFor();
+  await globalSearch.press("ArrowDown");
   await globalSearch.press("Enter");
   await page.waitForFunction(() =>
     new URL(location.href).searchParams.getAll("tag").includes("docs"),
   );
   await globalSearch.fill("tag:typescript");
   await page.getByRole("option", { name: "typescript", exact: true }).waitFor();
+  await globalSearch.press("ArrowDown");
   await globalSearch.press("Enter");
   await page.waitForFunction(() => new URL(location.href).searchParams.getAll("tag").length === 2);
+  // Selection should close the native menu; a stale "No results" popup must
+  // never cover active chips or the compact mobile header.
+  await page.getByRole("listbox").waitFor({ state: "hidden" });
+
+  // Inspect both native controls while tag chips are present, not only after
+  // the end-to-end test removes the selected filters.
+  await page.screenshot({ path: ".cloudflare/unified-search-tags-desktop.png" });
+  await page.setViewportSize({ width: 360, height: 900 });
+  await page.waitForTimeout(250);
+  await page.screenshot({ path: ".cloudflare/unified-search-tags-mobile.png" });
+  if (await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1))
+    throw new Error("Unified search chips overflow mobile viewport");
+  await page.setViewportSize({ width: 1440, height: 900 });
+
   await globalSearch.fill("Synthetic");
   await page.waitForFunction(() => new URL(location.href).searchParams.get("q") === "Synthetic");
   await page.locator('[role="gridcell"]').first().waitFor();

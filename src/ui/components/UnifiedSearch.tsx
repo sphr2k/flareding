@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type RefObject } from "react";
+import { useRef, useState, type RefObject } from "react";
 import { ComboBox, ComboBoxItem } from "@react-spectrum/s2/ComboBox";
 import { TagGroup, Tag } from "@react-spectrum/s2/TagGroup";
 import { StatusLight } from "@react-spectrum/s2/StatusLight";
@@ -18,28 +18,28 @@ interface Props {
 
 /**
  * A single search surface: normal text and tag: syntax share the ComboBox input;
- * active tag filters appear as native removable Spectrum TagGroup chips beside it.
+ * active filters render in a separate native Spectrum TagGroup below the input.
  * The ComboBox owns keyboard navigation, option selection and mobile suggestion tray.
  */
 export function UnifiedSearch({ query, onQueryChange, tags, onTagsChange, searchRef }: Props) {
   const rawFragment = pendingTag(query);
-  const [suggestFragment, setSuggestFragment] = useState<string | null>(rawFragment);
   const selectedRef = useRef(false);
+  const [selectionEpoch, setSelectionEpoch] = useState(0);
 
-  useEffect(() => {
-    const timeout = setTimeout(() => setSuggestFragment(rawFragment), 180);
-    return () => clearTimeout(timeout);
-  }, [rawFragment]);
-
+  // Bind the async collection to the actual current query. A separate debounced
+  // query caused old suggestions to stay selectable for the new input value.
+  // TanStack Query aborts replaced requests through the supplied AbortSignal.
   const suggestions = useQuery({
-    queryKey: ["search-tag-options", suggestFragment],
-    queryFn: ({ signal }) => getActiveTagSuggestions(suggestFragment ?? "", signal),
-    enabled: rawFragment !== null && suggestFragment !== null,
+    queryKey: ["search-tag-options", rawFragment],
+    queryFn: ({ signal }) => getActiveTagSuggestions(rawFragment ?? "", signal),
+    enabled: rawFragment !== null,
     staleTime: 60_000,
   });
 
+  const liveFragment = rawFragment?.trim().toLocaleLowerCase() ?? "";
   const options = (suggestions.data?.results ?? [])
     .filter((item) => !tags.includes(item.name))
+    .filter((item) => item.name.toLocaleLowerCase().includes(liveFragment))
     .map(({ name }) => ({ id: name, name }));
 
   function addTags(next: string[]) {
@@ -56,11 +56,14 @@ export function UnifiedSearch({ query, onQueryChange, tags, onTagsChange, search
   function selectTag(name: string) {
     selectedRef.current = true;
     addTags([name]);
+    setSelectionEpoch((epoch) => epoch + 1);
     onQueryChange(stripPendingTag(query));
+    // Remounting the native field when leaving tag mode closes its listbox.
+    // Restore focus after the new instance has mounted.
+    requestAnimationFrame(() => searchRef.current?.getInputElement()?.focus());
     queueMicrotask(() => {
       selectedRef.current = false;
     });
-    searchRef.current?.getInputElement()?.focus();
   }
 
   return (
@@ -69,57 +72,37 @@ export function UnifiedSearch({ query, onQueryChange, tags, onTagsChange, search
       aria-label="Bookmark search and tag filters"
       className={style({
         display: "flex",
-        alignItems: "center",
-        flexWrap: "wrap",
+        flexDirection: "column",
         gap: 8,
-        padding: 4,
         width: "full",
         maxWidth: 752,
-        borderRadius: "lg",
-        backgroundColor: "layer-1",
+        minWidth: 0,
       })}
       onKeyDown={(event) => {
+        // Delegate Enter/ArrowDown/Escape entirely to native Spectrum ComboBox.
+        if (event.target !== searchRef.current?.getInputElement()) return;
         if (event.key === "Backspace" && !query && tags.length > 0) {
           event.preventDefault();
           onTagsChange(tags.slice(0, -1));
         }
-        // If the listbox did not handle Enter itself (no focused option),
-        // commit an exact match or the typed name without requiring Tab.
-        if (event.key === "Enter" && rawFragment?.trim()) {
-          event.preventDefault();
-          const exact = options.find(
-            (option) => option.name.toLowerCase() === rawFragment.trim().toLowerCase(),
-          );
-          selectTag(exact?.name ?? rawFragment.trim());
-        }
       }}
     >
-      {tags.length > 0 && (
-        <TagGroup
-          aria-label="Active tag filters"
-          size="S"
-          items={tags.map((name) => ({ id: name }))}
-          onRemove={(keys) => onTagsChange(tags.filter((name) => !keys.has(name)))}
-        >
-          {(item) => <Tag id={item.id}>{item.id}</Tag>}
-        </TagGroup>
-      )}
       <ComboBox
+        key={selectionEpoch}
         ref={searchRef}
         aria-label="Search bookmarks"
         placeholder="Search bookmarks or type tag:…"
         size="M"
         inputValue={query}
         onInputChange={handleInput}
-        selectedKey={null}
         onSelectionChange={(key) => {
           if (key != null) selectTag(String(key));
         }}
         items={rawFragment !== null ? options : []}
         allowsCustomValue
-        menuTrigger="input"
+        menuTrigger={rawFragment === null ? "manual" : "input"}
         loadingState={rawFragment !== null && suggestions.isFetching ? "loading" : "idle"}
-        styles={style({ flexGrow: 1, minWidth: 160 })}
+        styles={style({ width: "full" })}
       >
         {(item) => (
           <ComboBoxItem id={item.id} textValue={item.name}>
@@ -127,6 +110,16 @@ export function UnifiedSearch({ query, onQueryChange, tags, onTagsChange, search
           </ComboBoxItem>
         )}
       </ComboBox>
+      {tags.length > 0 && (
+        <TagGroup
+          aria-label="Active tag filters"
+          size="M"
+          items={tags.map((name) => ({ id: name }))}
+          onRemove={(keys) => onTagsChange(tags.filter((name) => !keys.has(name)))}
+        >
+          {(item) => <Tag id={item.id}>{item.id}</Tag>}
+        </TagGroup>
+      )}
       {rawFragment !== null && suggestions.isError && (
         <StatusLight variant="negative">Tag suggestions unavailable</StatusLight>
       )}

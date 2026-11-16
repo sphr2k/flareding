@@ -38,6 +38,11 @@ Flareding uses **Adobe React Spectrum 2** (`@react-spectrum/s2`) as its **sole U
 - Override internal Spectrum component selectors, DOM structure, CSS grid tracks, spacing or typography to work around a component used incorrectly.
 - Add Tailwind, shadcn/ui or a second component/design system.
 - Invent ad hoc spacing, colors or typography when Spectrum tokens exist.
+- Build a faux compound input by wrapping a Spectrum ComboBox and TagGroup
+  inside a bordered flex-wrap shell. Keep each native field visually intact,
+  and render selected tag filters in a separate Spectrum TagGroup below it.
+- Intercept native ComboBox ArrowDown, Enter, or Escape behavior from a parent
+  container. Leave option navigation and selection to Spectrum/React Aria.
 
 **Preferred examples:** `CardView`/`Card` for bookmarks, `ListView` with documented `Image`/`Text` slots, `SearchField`, `Tabs`, `SegmentedControl`, `ActionMenu`, `DialogTrigger`/`Dialog` and native Spectrum collection/selection patterns.
 
