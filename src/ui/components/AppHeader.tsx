@@ -1,12 +1,15 @@
-import { SearchField } from "@react-spectrum/s2/SearchField";
 import type { TextFieldRef } from "@react-spectrum/s2/TextField";
 import { style } from "@react-spectrum/s2/style" with { type: "macro" };
 import type { RefObject } from "react";
 import { Button } from "@react-spectrum/s2/Button";
+import { ActionMenu, MenuItem } from "@react-spectrum/s2/ActionMenu";
+import { UnifiedSearch } from "./UnifiedSearch.js";
 
 interface Props {
   search: string;
   onSearchChange: (value: string) => void;
+  tags: string[];
+  onTagsChange: (tags: string[]) => void;
   searchRef: RefObject<TextFieldRef<HTMLInputElement> | null>;
   onAddOpenChange: (open: boolean) => void;
   isNarrow: boolean;
@@ -17,6 +20,8 @@ interface Props {
 export function AppHeader({
   search,
   onSearchChange,
+  tags,
+  onTagsChange,
   searchRef,
   onAddOpenChange,
   onLogout,
@@ -29,9 +34,9 @@ export function AppHeader({
         gridArea: "toolbar",
         display: "flex",
         alignItems: "center",
-        gap: 20,
-        padding: 16,
-        paddingStart: 20,
+        gap: 12,
+        paddingX: 20,
+        paddingY: 12,
         boxSizing: "border-box",
         minWidth: 0,
         flexWrap: { default: "wrap", "@media (min-width: 768px)": "nowrap" },
@@ -48,36 +53,38 @@ export function AppHeader({
       </strong>
       <div
         className={style({
+          display: "flex",
           flexGrow: 1,
           minWidth: 0,
-          display: "flex",
           justifyContent: "center",
           order: { default: 1, "@media (min-width: 768px)": 0 },
           flexBasis: { default: "full", "@media (min-width: 768px)": "auto" },
         })}
       >
-        <SearchField
-          aria-label="Search bookmarks"
-          placeholder="Title, URL or description…"
-          value={search}
-          onChange={onSearchChange}
-          ref={searchRef}
-          styles={style({ width: "full", maxWidth: 768 })}
+        <UnifiedSearch
+          query={search}
+          onQueryChange={onSearchChange}
+          tags={tags}
+          onTagsChange={onTagsChange}
+          searchRef={searchRef}
         />
       </div>
       {isNarrow && (
-        <Button variant="accent" onPress={() => onAddOpenChange(true)}>
+        <Button variant="accent" size="S" onPress={() => onAddOpenChange(true)}>
           + Add
         </Button>
       )}
-      {onSettings && (
-        <Button variant="secondary" onPress={onSettings}>
-          Settings
-        </Button>
-      )}
-      <Button variant="secondary" onPress={onLogout}>
-        Logout
-      </Button>
+      <ActionMenu
+        aria-label="Account"
+        size="M"
+        onAction={(key) => {
+          if (key === "settings") onSettings?.();
+          if (key === "logout") onLogout();
+        }}
+      >
+        {onSettings && <MenuItem id="settings">Settings</MenuItem>}
+        <MenuItem id="logout">Logout</MenuItem>
+      </ActionMenu>
     </header>
   );
 }

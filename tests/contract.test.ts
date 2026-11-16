@@ -1,6 +1,7 @@
 import {
   flaredingV1TagPageInput,
   flaredingV1TagPageOutput,
+  flaredingV1BookmarkSearchInput,
 } from "../src/api/flareding/v1/contract.js";
 import { describe, expect, it } from "vite-plus/test";
 import {
@@ -27,6 +28,28 @@ describe("additive Flareding v1 overlay contract", () => {
         results: [{ id: 1, name: "active", date_added: "2026-11-16T00:00:00.000Z" }],
       }).success,
     ).toBe(true);
+  });
+});
+
+describe("Flareding v1 multi-tag search contract", () => {
+  it("validates bounded AND tags, whitespace and collection without changing Linkding", () => {
+    expect(
+      flaredingV1BookmarkSearchInput.parse({
+        query: " kafka ",
+        tags: ["Kubernetes", "two words"],
+        view: "unread",
+      }),
+    ).toMatchObject({
+      query: "kafka",
+      tags: ["Kubernetes", "two words"],
+      view: "unread",
+      limit: 60,
+    });
+    expect(flaredingV1BookmarkSearchInput.safeParse({ tags: Array(13).fill("x") }).success).toBe(
+      false,
+    );
+    expect(flaredingV1BookmarkSearchInput.safeParse({ view: "invalid" }).success).toBe(false);
+    expect(Object.keys(bookmarkPageInput.shape)).not.toContain("tags");
   });
 });
 

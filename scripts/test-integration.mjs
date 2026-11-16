@@ -360,12 +360,13 @@ try {
   const archiveOnlyName = `archive-only-${randomUUID()}`;
   const sharedTagName = `shared-${randomUUID()}`;
   const activeTagName = `active-${randomUUID()}`;
+  const spacedTagName = `synthetic tag with spaces ${randomUUID()}`;
   const activeUrl = `https://example.com/flareding-tag-active-${randomUUID()}`;
   const archiveUrl = `https://example.com/flareding-tag-archived-${randomUUID()}`;
   const activeForTags = await request("POST", "/api/bookmarks/", {
     url: activeUrl,
     title: "Synthetic active",
-    tag_names: [sharedTagName, activeTagName],
+    tag_names: [sharedTagName, activeTagName, spacedTagName],
   });
   expectStatus(activeForTags, 201, "active synthetic bookmark for tags");
   const archivedForTags = await request("POST", "/api/bookmarks/", {
@@ -394,6 +395,47 @@ try {
   const overlayShared = await request("GET", `/api/flareding/v1/tags/?q=${sharedTagName}`);
   expectStatus(overlayShared, 200, "shared tag from active bookmark remains visible");
   assert.equal(overlayShared.body.count, 1);
+  const bookmarkSearchPath = "/api/flareding/v1/bookmarks/search/";
+  const matchedAnd = await request("POST", bookmarkSearchPath, {
+    query: "Synthetic",
+    tags: [sharedTagName, activeTagName],
+    view: "all",
+  });
+  expectStatus(matchedAnd, 200, "additive AND filter");
+  assert.equal(matchedAnd.body.count, 1);
+  assert.equal(matchedAnd.body.results[0].id, activeForTags.body.id);
+  const matchSpace = await request("POST", bookmarkSearchPath, {
+    query: "Synthetic",
+    tags: [spacedTagName, activeTagName],
+    view: "all",
+  });
+  expectStatus(matchSpace, 200, "additive tags with spaces");
+  assert.equal(matchSpace.body.count, 1);
+  const notMatched = await request("POST", bookmarkSearchPath, {
+    query: "Synthetic",
+    tags: [activeTagName, archiveOnlyName],
+    view: "all",
+  });
+  expectStatus(notMatched, 200, "AND tags must not act as OR");
+  assert.equal(notMatched.body.count, 0);
+  const archivedMatched = await request("POST", bookmarkSearchPath, {
+    query: "Synthetic",
+    tags: [sharedTagName, archiveOnlyName],
+    view: "archived",
+  });
+  expectStatus(archivedMatched, 200, "overlay archived multi-tag search");
+  assert.equal(archivedMatched.body.count, 1);
+  const invalidSearch = await request("POST", bookmarkSearchPath, {
+    query: "Synthetic",
+    tags: Array(14).fill("invalid"),
+  });
+  assert.ok([400, 422].includes(invalidSearch.status), "tag filter limit validated");
+  expectStatus(
+    await request("POST", bookmarkSearchPath, { query: "Synthetic" }, false),
+    401,
+    "versioned search cannot be read anonymously",
+  );
+
   const overlayBad = await request("GET", "/api/flareding/v1/tags/?include_archived=all");
   assert.ok([400, 422].includes(overlayBad.status));
   expectStatus(
