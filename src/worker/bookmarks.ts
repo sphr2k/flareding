@@ -14,6 +14,7 @@ import type {
 } from "../api/bookmark-contract.js";
 import type { Env } from "../env.js";
 import { safeIconPath } from "../shared/site-host.js";
+import { listMcpTags, mergeMcpTags, previewMcpTagMerges, deleteMcpTags } from "./tag-management.js";
 
 type BookmarkRow = typeof bookmarks.$inferSelect;
 type Db = ReturnType<typeof drizzle>;
@@ -290,6 +291,18 @@ export class BookmarkDO extends DurableObject<Env> {
         date_added: row.createdAt.toISOString(),
       })),
     };
+  }
+
+  async listMcpTags(options: Parameters<typeof listMcpTags>[1]) {
+    return listMcpTags(this.db, options);
+  }
+
+  async mergeMcpTags(merges: Parameters<typeof mergeMcpTags>[1], dryRun: boolean) {
+    return dryRun ? previewMcpTagMerges(this.db, merges) : mergeMcpTags(this.db, merges);
+  }
+
+  async deleteMcpTags(names: string[], dryRun: boolean) {
+    return deleteMcpTags(this.db, names, dryRun);
   }
 
   async getTag(id: number): Promise<TagDTO | null> {

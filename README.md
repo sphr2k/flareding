@@ -334,9 +334,10 @@ the **same** `BOOKMARKS.getByName("default")` Durable Object RPCs as the linkdin
 REST API; no duplicate bookmarks, HTTP self-calls or MCP Durable Object.
 
 Tools: `search_bookmarks`, `get_bookmark`, `create_bookmark` (URL upsert),
-`update_bookmark`, `archive_bookmark`, `delete_bookmark`, `list_tags`. Searches
-and tags use bounded pagination (1–50 results); deletion is marked destructive.
-Text matching is substring-based, not yet full-text search.
+`update_bookmark`, `archive_bookmark`, `delete_bookmark`, `list_tags`,
+`merge_tags` and `delete_tags`. Bookmark search uses bounded pagination
+(1–50 results); tag listing permits 1–500 rows. Tag merge/deletion are marked
+destructive. Text matching is substring-based, not yet full-text search.
 
 Cloudflare Access protects only the deployed MCP path, not `/api/*` or the
 SPA. The staging Access application **Flareding MCP Staging Service Auth** has
@@ -352,3 +353,36 @@ Client OAuth remains Cloudflare MCP Portal's responsibility. The Gateway
 registers the external Worker endpoint with its own Access Service Auth
 credentials, without deploying this Worker or altering the REST UI session.
 Any production MCP rollout requires its own Access application/audience.
+
+### MCP tag harmonization
+
+`list_tags` exposes `bookmark_count` (including archived bookmarks), optional
+`query`, `min_count`/`max_count`, `sort: name|count|date_added`, `order: asc|desc`,
+and `limit`/`offset` (maximum 500 rows). Total `count` is the number of tags
+matching filters _before_ pagination. The linkding REST tag DTO is unchanged.
+
+`merge_tags` accepts up to 500 `{sources: [...], target: "..."}` entries and an
+optional `dry_run` (default false). Each entry uses an independent SQLite
+transaction: insert distinct target links in bulk, remove source links/tags
+in bounded SQLite parameter chunks, without updating bookmark rows or their `date_modified`. Existing exact target
+is preferred; otherwise, case-insensitive variants are renamed/canonicalized.
+Case-insensitive target-equivalent source names are ignored as explicit sources
+but existing variants still collapse into the canonical target. Source lookup
+for unrelated names is exact. Missing sources are reported. A missing target is
+created, even if all sources were absent. Individual failures return an error
+and roll back only their own entry.
+
+Dry-run simulates **sequential** batch effects using an in-memory representation
+of the touched tag relationships, without database writes. Preview and actual
+apply return per-entry `target_created`, `sources_merged`, `sources_not_found`,
+`bookmarks_affected` (distinct bookmarks carrying transferred/case-normalized
+source tags) and an optional `error`. Repeat runs may create empty target tags
+when all sources were already consumed by later batch entries; check the preview
+before applying overlapping mappings.
+
+`delete_tags` accepts up to 500 exact tag names and optional `dry_run`. It
+removes associations and tag rows but never bookmark records or their
+`date_modified`; its per-name `deleted` denotes _would delete_ in dry-run.
+
+Real SQLite transaction/invariant tests run under `bun run test:sqlite`; the
+existing `vp test` exercises MCP argument/response contracts and JWT security.
