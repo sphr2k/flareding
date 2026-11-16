@@ -270,32 +270,55 @@ be assumed to revoke them. Use cf workers secrets delete for rollback.
 
 ## Cloudflare-managed Git deployments
 
-The existing `flareding-staging` Worker is connected to GitHub (`sphr2k/flareding`, branch `main`) through **Cloudflare Workers Builds**. Builds run `bun run build`, then deploy with `bun run deploy:staging`; Preview Builds are disabled, and the existing SQLite Durable Object is retained.
+The existing `flareding-staging` Worker tracks GitHub `sphr2k/flareding`, branch
+`main`, through **Cloudflare Workers Builds**. Preview Builds are disabled;
+releases keep the same SQLite Durable Object namespace and both hostnames.
 
-Cloudflare Workers Builds determines the runtime from `.node-version` and Bun from `packageManager` in `package.json`. **Do not add `npm:cf` to `.tool-versions`**: the hosted image fails when trying to install that mise plugin. Locally, invoke `cf` via the pinned project `devDependency` or an explicitly selected `mise` tool.
+The production build settings for Worker script tag
+`6d2ebb6948264d4eaf13323f74303052` are:
 
-GitHub Actions continues to check TypeScript, lint, tests and real workerd before merges. Cloudflare then performs the actual staging deployment from `main`.
+- Build: `SWC_NATIVE_BINDING_CACHE_SKIP_SECURITY_CHECK=1 bun run build`
+- Deploy: `SWC_NATIVE_BINDING_CACHE_SKIP_SECURITY_CHECK=1 bun run deploy:staging`
+- Build caching: enabled
 
-## UI redesign (#21)
+The SWC 1.16 native addon materializes a verified, self-loading carrier. The
+Cloudflare isolated build container uses a filesystem ownership arrangement
+that the addon rejects even when default and explicitly private native-cache
+paths are used. The upstream SWC carrier documentation permits the environment
+variable **only for trusted, isolated CI executors**. Keep this override scoped
+to Cloudflare Workers Builds; do not set it in application code or the deployed
+Worker, and do not disable the security check on shared developer machines.
+See [SWC's native addon carrier guide](https://github.com/swc-project/swc/blob/main/docs/native-addon-carriers.md).
 
-The authenticated UI uses Adobe React Spectrum 2 exclusively. It has one
-compact AppHeader with brand, global SearchField, AddBookmark DialogTrigger,
-and secondary ActionMenu for logout, followed by a CollectionToolbar with native
-Tabs, optional tag filter and SegmentedControl.
+Cloudflare Workers Builds selects the runtime from `.node-version` and Bun from
+`packageManager` in `package.json`. **Do not add `npm:cf` to `.tool-versions`**:
+the hosted image fails to install that mise plugin. Locally, use the pinned
+`cf` dependency or an explicitly selected `mise` tool.
 
-- Native CardView uses size XL to avoid dense 5-column desktop cards. Site
-  fallback is based on the canonical host, never the link path or title.
-- On mobile under 640px, automatically use the native Spectrum ListView; its
-  documented direct Image/Text/ActionMenu slots keep icon and title readable.
-- The first UI iteration generates deterministic, inert local site monograms;
-  it does not yet crawl URLs or make third-party icon requests.
-- Slash outside text inputs focuses global search; pressing n opens the
-  Add Bookmark dialog. Cancel/ESC restores focus through Spectrum semantics.
-- Chrome smoke exercises 360/768/1280/1920px with synthetic bookmarks,
-  verifies no horizontal overflow and writes ignored screenshots only.
+GitHub Actions independently checks TypeScript, lint, format, tests and actual
+workerd. Cloudflare Workers Builds then deploys `main` automatically.
 
-A second PR implements a bounded same-origin favicon resolver with
-positive/negative Cloudflare Cache API and strict SSRF controls.
+## Bookmark UI
+
+The authenticated UI uses Adobe React Spectrum 2. AppHeader contains the brand,
+a native ComboBox for unified search and a compact Account ActionMenu for
+Settings and Logout. Selected tag filters are rendered in a separate, removable
+Spectrum TagGroup below the search field; they are not embedded into a faux
+compound input. The search accepts `tag:` syntax and forwards multiple tags
+with AND semantics through the typed Flareding v1 overlay without modifying the
+Linkding v1 API. Query, selected tags, collection and page are URL-shareable.
+
+- A single native Spectrum CardView is used at every viewport size. The former
+  ListView and cards/list switch were deliberately removed.
+- CollectionToolbar shows the heading and count on desktop, native collection
+  Tabs on mobile. Sidebar navigation uses native Spectrum icons and tooltips.
+- Each card offers Edit, Archive/Unarchive and Delete from its quiet action menu.
+  Permanent Delete requires a destructive Spectrum confirmation dialog.
+- Tags display a native Spectrum hover/focus preview; no manually positioned
+  interactive popup or custom pointer tracking is used.
+- `/` outside text fields focuses search; `n` opens the Add Bookmark dialog.
+- Chromium smoke uses only synthetic bookmarks, verifies keyboard selection,
+  deletion, search/deep links, dark-mode layout and mobile widths 360/768/1280/1920.
 
 ## Site icons (#21)
 
@@ -325,9 +348,8 @@ SQLite Durable Object; **zero additional SQL reads or writes per favicon**.
   per-isolate concurrency guard limits parallel crawls to 32. Remote fetch
   promises are not shared across Cloudflare request contexts; the canonical
   same-origin URL, browser image cache and edge Cache API deduplicate by host.
-- Cards lazy-load icons with a fixed 40px footprint; native Spectrum
-  ListView uses its own Image slot with a 32px asset. Both fall back
-  deterministically to the same site monogram and stable host-hash tone.
+- Cards lazy-load icons with a fixed 40px footprint and fall back
+  deterministically to a site monogram and stable host-hash tone.
 - The resolver is designed to be safe for user-controlled URLs but does not
   promise to prevent every possible DNS-rebinding attack. Review egress
   controls if exposing the service to untrusted/multi-tenant users.
