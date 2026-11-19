@@ -127,15 +127,17 @@ export class BookmarkDO extends DurableObject<Env> {
     const predicates: SQL[] = [];
     if (options.archived === undefined) predicates.push(eq(bookmarks.isArchived, false));
     else predicates.push(eq(bookmarks.isArchived, options.archived));
-    // LinkThing uses the legacy linkding keyword for its default Unread view.
-    // Only standalone keywords are consumed; quoted/literal fragments stay text.
+    // Consume standalone linkding tag filters and the legacy unread keyword.
+    // Quotes in the remaining query stay part of the text search.
     let queryUnread = false;
+    const queryTags: string[] = [];
     const query = options.q
       ?.replace(
-        /"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|(^|\s)!unread(?=\s|$)/gi,
-        (token, boundary) => {
+        /"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|(^|\s)(!unread|#(?:"([^"]+)"|'([^']+)'|([^\s"']+)))(?=\s|$)/gi,
+        (token, boundary, filter, doubleQuoted, singleQuoted, bare) => {
           if (boundary === undefined) return token;
-          queryUnread = true;
+          if (filter.toLowerCase() === "!unread") queryUnread = true;
+          else queryTags.push(doubleQuoted ?? singleQuoted ?? bare);
           return " ";
         },
       )
@@ -161,7 +163,7 @@ export class BookmarkDO extends DurableObject<Env> {
         .where(eq(tags.name, options.tag));
       predicates.push(inArray(bookmarks.id, tagged));
     }
-    for (const tagName of options.tagsAll ?? []) {
+    for (const tagName of [...(options.tagsAll ?? []), ...queryTags]) {
       // One indexed EXISTS predicate per selected tag. Each required tag
       // must be associated with the bookmark (AND, not OR).
       predicates.push(
@@ -170,7 +172,12 @@ export class BookmarkDO extends DurableObject<Env> {
             .select({ id: bookmarkTags.bookmarkId })
             .from(bookmarkTags)
             .innerJoin(tags, eq(tags.id, bookmarkTags.tagId))
-            .where(and(eq(bookmarkTags.bookmarkId, bookmarks.id), eq(tags.name, tagName))),
+            .where(
+              and(
+                eq(bookmarkTags.bookmarkId, bookmarks.id),
+                sql`lower(${tags.name}) = lower(${tagName})`,
+              ),
+            ),
         ),
       );
     }

@@ -413,6 +413,21 @@ try {
   const tagsShared = await request("GET", `/api/tags/?q=${sharedTagName}`);
   expectStatus(tagsShared, 200, "shared tag from active bookmark remains visible");
   assert.equal(tagsShared.body.count, 1);
+  const ribbonTagQuery = new URLSearchParams({
+    limit: "100",
+    offset: "0",
+    q: "#" + sharedTagName.toUpperCase(),
+  });
+  const ribbonTagResults = await request("GET", "/api/bookmarks/?" + ribbonTagQuery);
+  expectStatus(ribbonTagResults, 200, "Ribbon tag query");
+  assert.deepEqual(
+    ribbonTagResults.body.results.map((bookmark) => bookmark.id),
+    [activeForTags.body.id],
+  );
+  ribbonTagQuery.set("q", '#"' + spacedTagName + '"');
+  const quotedTagResults = await request("GET", "/api/bookmarks/?" + ribbonTagQuery);
+  expectStatus(quotedTagResults, 200, "quoted linkding tag query");
+  assert.equal(quotedTagResults.body.count, 1);
   const unusedName = `unused-${randomUUID()}`;
   expectStatus(await request("POST", "/api/tags/", { name: unusedName }), 201, "create unused tag");
   const unusedPath = `/api/tags/?q=${unusedName}`;
