@@ -76,6 +76,25 @@ try {
   }
   if (!ready) throw new Error("Timed out starting real local SQLite DO");
 
+  const profilePath = "/api/user/profile/";
+  expectStatus(await request("GET", profilePath, undefined, false), 401, "anonymous profile");
+  const profile = await request("GET", profilePath);
+  expectStatus(profile, 200, "Token-authenticated profile");
+  assert.deepEqual(profile.body, {
+    theme: "auto",
+    bookmark_date_display: "relative",
+    bookmark_link_target: "_blank",
+    web_archive_integration: "disabled",
+    tag_search: "strict",
+    enable_sharing: false,
+    enable_public_sharing: false,
+    enable_favicons: true,
+    display_url: false,
+    permanent_notes: false,
+    search_preferences: {},
+    version: "0.0.0",
+  });
+
   // MCP is protected by a separate verified Access application JWT, never the
   // linkding API token or a caller-controlled CF-Access-Client-ID header.
   const mcpRequest = (headers = {}) =>

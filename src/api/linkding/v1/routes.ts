@@ -30,6 +30,22 @@ const account = (context: { env: { BOOKMARKS: import("../../../env.js").Env["BOO
  * The Worker checks Authorization: Token for ALL routes in this router.
  */
 export const linkdingV1Routes = {
+  userProfile: procedure.meta(openapi({ method: "GET", path: "/user/profile/" })).handler(() => ({
+    theme: "auto",
+    bookmark_date_display: "relative",
+    bookmark_link_target: "_blank",
+    web_archive_integration: "disabled",
+    tag_search: "strict",
+    enable_sharing: false,
+    enable_public_sharing: false,
+    enable_favicons: true,
+    display_url: false,
+    permanent_notes: false,
+    search_preferences: {},
+    // Do not advertise a linkding release whose full API we do not implement.
+    version: "0.0.0",
+  })),
+
   listBookmarks: procedure
     .meta(openapi({ method: "GET", path: "/bookmarks/" }))
     .input(bookmarkPageInput)
