@@ -1,3 +1,5 @@
+import { createInsertSchema } from "drizzle-orm/zod";
+import { bundles } from "../../../db/schema.js";
 import { z } from "zod";
 import {
   bookmarkInsertSchema,
@@ -17,11 +19,14 @@ const editable = bookmarkInsertSchema.pick({
 });
 
 export const bookmarkCreate = editable
+  .partial({ title: true })
   .extend({
     url: z.url({ protocol: /^https?$/ }).max(8192),
     is_archived: z.boolean().optional(),
     unread: z.boolean().optional(),
     shared: z.boolean().optional(),
+    date_added: z.iso.datetime({ offset: true }).optional(),
+    date_modified: z.iso.datetime({ offset: true }).optional(),
     tag_names: z.array(z.string().trim().min(1).max(120)).max(100).optional(),
   })
   .strict();
@@ -36,6 +41,8 @@ export const bookmarkPatch = bookmarkUpdateSchema
     is_archived: z.boolean().optional(),
     unread: z.boolean().optional(),
     shared: z.boolean().optional(),
+    date_added: z.iso.datetime({ offset: true }).optional(),
+    date_modified: z.iso.datetime({ offset: true }).optional(),
     tag_names: z.array(z.string().trim().min(1).max(120)).max(100).optional(),
   })
   .strict();
@@ -55,6 +62,8 @@ export const bookmarkDto = z.object({
   web_archive_snapshot_url: z.string().nullable(),
   favicon_url: z.string().nullable(),
   preview_image_url: z.string().nullable(),
+  website_title: z.null().optional(),
+  website_description: z.null().optional(),
 });
 
 export const tagDto = z.object({
@@ -95,14 +104,32 @@ export const tagPageInput = pageInput.extend({
     .transform((value) => value === "true"),
 });
 
+const bookmarkSorts = [
+  "added_desc",
+  "added_asc",
+  "modified_desc",
+  "modified_asc",
+  "title_desc",
+  "title_asc",
+] as const;
+export type BookmarkSort = (typeof bookmarkSorts)[number];
+
 export const bookmarkPageInput = pageInput.extend({
   tag: z.string().trim().max(120).optional(),
   unread: z
-    .enum(["true", "false", "yes", "no"])
-    .transform((value) => value === "true" || value === "yes")
+    .enum(["true", "false", "yes", "no", "off"])
+    .transform((value) =>
+      value === "yes" || value === "true" ? true : value === "no" ? false : undefined,
+    )
     .optional(),
-  modified_since: z.string().datetime().optional(),
-  added_since: z.string().datetime().optional(),
+  shared: z
+    .enum(["yes", "no", "off"])
+    .transform((value) => (value === "off" ? undefined : value === "yes"))
+    .optional(),
+  bundle: z.coerce.number().int().positive().optional(),
+  sort: z.enum(bookmarkSorts).catch("added_desc").optional(),
+  modified_since: z.iso.datetime({ offset: true }).optional().catch(undefined),
+  added_since: z.iso.datetime({ offset: true }).optional().catch(undefined),
 });
 
 export const pageOutput = <T extends z.ZodType>(item: T) =>
@@ -119,3 +146,16 @@ export type BookmarkCreate = z.infer<typeof bookmarkCreate>;
 export type BookmarkPatch = z.infer<typeof bookmarkPatch>;
 export type BookmarkDTO = z.infer<typeof bookmarkDto>;
 export type TagDTO = z.infer<typeof tagDto>;
+
+export const bundleCreate = createInsertSchema(bundles, {
+  name: (schema) => schema.trim().min(1).max(256),
+  search: (schema) => schema.max(256),
+  any_tags: (schema) => schema.max(1024),
+  all_tags: (schema) => schema.max(1024),
+  excluded_tags: (schema) => schema.max(1024),
+})
+  .omit({ id: true, date_created: true, date_modified: true })
+  .partial({ order: true });
+export const bundlePatch = bundleCreate.partial();
+export type BundleCreate = z.infer<typeof bundleCreate>;
+export type BundlePatch = z.infer<typeof bundlePatch>;

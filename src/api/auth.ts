@@ -4,11 +4,11 @@ const encoder = new TextEncoder();
 export async function authenticateToken(
   request: Request,
   configuredSecret: string | undefined,
+  { allowBearer = false }: { allowBearer?: boolean } = {},
 ): Promise<"ok" | "unavailable" | "invalid"> {
   if (!configuredSecret || configuredSecret.length < 32) return "unavailable";
   const header = request.headers.get("Authorization");
-  if (!header?.startsWith("Token ")) return "invalid";
-  const provided = header.slice("Token ".length);
+  const provided = header?.match(allowBearer ? /^(?:Token|Bearer) (.+)$/i : /^Token (.+)$/)?.[1];
   if (!provided || provided.length > 512) return "invalid";
 
   // Compare fixed-size digests without early-exit string equality.

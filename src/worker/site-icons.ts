@@ -77,7 +77,10 @@ export function validateOutboundUrl(raw: string): URL | null {
   return url;
 }
 
-async function readLimited(response: Response, maxBytes: number): Promise<Uint8Array | null> {
+export async function readLimited(
+  response: Response,
+  maxBytes: number,
+): Promise<Uint8Array | null> {
   if (!response.body) return null;
   const len = response.headers.get("Content-Length");
   if (len && Number(len) > maxBytes) {
@@ -231,6 +234,78 @@ async function fetchChecked(
     return { url: safe, response };
   }
   return null;
+}
+
+async function fetchWebsiteMetadata(url: string, requester: Requester) {
+  const empty = { url, title: null, description: null, preview_image: null };
+  const target = validateOutboundUrl(url);
+  if (!target) return empty;
+  const page = await fetchChecked(target, requester, new Map()).catch(() => null);
+  if (!page) return empty;
+  if (!page.response.ok || !page.response.headers.get("Content-Type")?.includes("text/html")) {
+    await page.response.body?.cancel().catch(() => {});
+    return empty;
+  }
+  const bytes = await readLimited(page.response, MAX_HTML_BYTES).catch(() => null);
+  if (!bytes) return empty;
+
+  let title = "";
+  const metadata = new Map<string, string>();
+  const collect = (key: string) => ({
+    element(element: Element) {
+      const value = element.getAttribute("content")?.trim();
+      if (value && !metadata.has(key)) metadata.set(key, value);
+    },
+  });
+  const parsed = new HTMLRewriter()
+    .on("head title", {
+      text: (chunk) => {
+        title += chunk.text;
+      },
+    })
+    .on('meta[name="description"]', collect("description"))
+    .on('meta[property="og:description"]', collect("og:description"))
+    .on('meta[property="og:image"]', collect("og:image"))
+    .transform(new Response(Uint8Array.from(bytes)));
+  try {
+    await parsed.arrayBuffer();
+  } catch {
+    return empty;
+  }
+  let previewImage: URL | null = null;
+  const image = metadata.get("og:image");
+  if (image) {
+    try {
+      previewImage = validateOutboundUrl(new URL(image, page.url).href);
+    } catch {
+      // Invalid image metadata is treated as absent.
+    }
+  }
+  return {
+    url,
+    title: title.trim() || null,
+    description: metadata.get("description") ?? metadata.get("og:description") ?? null,
+    preview_image: previewImage?.href ?? null,
+  };
+}
+
+type WebsiteMetadata = Awaited<ReturnType<typeof fetchWebsiteMetadata>>;
+const websiteMetadataCache = new Map<string, { value: WebsiteMetadata; expires: number }>();
+
+export async function loadWebsiteMetadata(url: string, ignoreCache = false) {
+  const cached = websiteMetadataCache.get(url);
+  if (!ignoreCache && cached && cached.expires > Date.now()) return cached.value;
+
+  const value = await fetchWebsiteMetadata(url, fetch);
+  if (value.title || value.description || value.preview_image) {
+    websiteMetadataCache.delete(url);
+    websiteMetadataCache.set(url, { value, expires: Date.now() + 60_000 });
+    if (websiteMetadataCache.size > 10) {
+      const oldest = websiteMetadataCache.keys().next();
+      if (!oldest.done) websiteMetadataCache.delete(oldest.value);
+    }
+  }
+  return value;
 }
 
 function parseHtmlAttributes(tag: string): Record<string, string> {

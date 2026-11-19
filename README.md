@@ -2,10 +2,9 @@
 
 Cloudflare-native, linkding-compatible personal bookmark service.
 
-Status: authenticated bookmark/tag REST API and a functional Adobe React
-Spectrum 2 UI. This is a **subset** of linkding: asset upload, URL metadata
-scraping, all search operators, bulk operations and full client compatibility
-remain tracked in GitHub Issues.
+Flareding includes the bookmark, tag, bundle, profile and asset APIs, with an
+Adobe React Spectrum 2 web UI. The remaining differences are documented in the
+[compatibility contract](docs/linkding-api-compatibility.md).
 
 ## Architecture
 
@@ -62,13 +61,16 @@ Never commit credentials, bookmark exports or browser cookies.
 
 ## linkding subset
 
-Implemented: list, create/upsert, get, patch/put, delete, archived list,
-archive/unarchive, tag list/create/delete, pagination and basic text search.
-Numeric IDs, linkding tag_names and date_added/date_modified fields are emitted.
-Responses containing personal data use Cache-Control: private, no-store.
+The API supports bookmark CRUD, active and archived lists, archive actions,
+tag filtering, bundles, URL checks, and multipart asset uploads and SingleFile
+snapshots. Asset downloads require authentication and are served as attachments.
+The API limits individual uploads to 8 MiB. Metadata fetches use bounded,
+public HTTP(S) requests and can be disabled on create with `disable_scraping`.
 
-Not yet implemented: metadata scraping, FTS5, advanced search syntax, bookmark
-check, assets and full HTTP contract coverage.
+Sharing is opt-in. An authenticated shared list requires the Worker text binding
+`LINKDING_SHARE_USERNAME` and a matching `user` query. Anonymous access to that
+list additionally requires `LINKDING_PUBLIC_SHARING=true`. Only bookmarks
+marked shared are returned in either case.
 
 ## UI
 
@@ -120,8 +122,7 @@ Pagination follows linkding v1.47.0: default 100, no configured maximum, invalid
 limits fall back to 100 and invalid offsets to 0. `limit=1000000` is accepted
 for both bookmarks and tags. LinkThing
 currently reads only its first tag page, so this does not guarantee access to more
-than 1000 tags within that client. Full linkding search expression support remains
-outside this subset. Client compatibility is tracked in #10.
+than 1000 tags within that client. Client compatibility is tracked in #10.
 
 ## Spectrum 2 UI concept
 

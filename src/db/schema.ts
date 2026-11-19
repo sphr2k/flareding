@@ -1,4 +1,5 @@
 import {
+  blob,
   index,
   integer,
   primaryKey,
@@ -75,4 +76,50 @@ export const importBatches = sqliteTable(
     createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
   },
   (t) => [primaryKey({ columns: [t.runId, t.batchIndex] })],
+);
+
+export const bundles = sqliteTable("bundles", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  name: text("name").notNull(),
+  search: text("search").notNull().default(""),
+  any_tags: text("any_tags").notNull().default(""),
+  all_tags: text("all_tags").notNull().default(""),
+  excluded_tags: text("excluded_tags").notNull().default(""),
+  filter_unread: text("filter_unread", { enum: ["yes", "no", "off"] })
+    .notNull()
+    .default("off"),
+  filter_shared: text("filter_shared", { enum: ["yes", "no", "off"] })
+    .notNull()
+    .default("off"),
+  order: integer("sort_order").notNull(),
+  date_created: integer("date_created", { mode: "timestamp_ms" }).notNull(),
+  date_modified: integer("date_modified", { mode: "timestamp_ms" }).notNull(),
+});
+
+export const bookmarkAssets = sqliteTable(
+  "bookmark_assets",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    bookmark: integer("bookmark")
+      .notNull()
+      .references(() => bookmarks.id, { onDelete: "cascade" }),
+    date_created: integer("date_created", { mode: "timestamp_ms" }).notNull(),
+    file_size: integer("file_size").notNull(),
+    asset_type: text("asset_type", { enum: ["snapshot", "upload"] }).notNull(),
+    content_type: text("content_type").notNull(),
+    display_name: text("display_name").notNull(),
+  },
+  (table) => [index("bookmark_assets_bookmark_idx").on(table.bookmark)],
+);
+
+export const bookmarkAssetChunks = sqliteTable(
+  "bookmark_asset_chunks",
+  {
+    assetId: integer("asset_id")
+      .notNull()
+      .references(() => bookmarkAssets.id, { onDelete: "cascade" }),
+    sequence: integer("sequence").notNull(),
+    bytes: blob("bytes", { mode: "buffer" }).notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.assetId, table.sequence] })],
 );

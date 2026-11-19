@@ -141,7 +141,7 @@ describe("linkding wire schemas derived from Drizzle", () => {
       unread: true,
       tag: "k8s",
     });
-    expect(bookmarkPageInput.parse({ unread: "false" })).toMatchObject({ unread: false });
+    expect(bookmarkPageInput.parse({ unread: "false" })).toMatchObject({ unread: undefined });
     expect(bookmarkPageInput.parse({ unread: "yes" }).unread).toBe(true);
     expect(bookmarkPageInput.parse({ unread: "no" }).unread).toBe(false);
     expect(bookmarkPageInput.safeParse({ unread: "maybe" }).success).toBe(false);

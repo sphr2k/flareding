@@ -17,7 +17,7 @@ export const flaredingV1Routes = {
         q: input.query,
         tagsAll: [...new Set(input.tags)],
         archived: input.view === "archived",
-        unread: input.view === "unread",
+        unread: input.view === "unread" ? true : undefined,
       });
       return {
         ...result,

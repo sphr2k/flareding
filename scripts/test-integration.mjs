@@ -43,6 +43,7 @@ function stop() {
   }
 }
 async function request(method, path, payload, authorize = true) {
+  if (method === "POST" && path === "/api/bookmarks/") path += "?disable_scraping";
   const response = await fetch(origin + path, {
     method,
     headers: {
@@ -428,6 +429,113 @@ try {
   const quotedTagResults = await request("GET", "/api/bookmarks/?" + ribbonTagQuery);
   expectStatus(quotedTagResults, 200, "quoted linkding tag query");
   assert.equal(quotedTagResults.body.count, 1);
+  const ascending = await request("GET", "/api/bookmarks/?sort=title_asc&limit=1");
+  expectStatus(ascending, 200, "title sort");
+  const descending = await request("GET", "/api/bookmarks/?sort=title_desc&limit=1");
+  assert.notEqual(ascending.body.results[0].id, descending.body.results[0].id);
+  const readOnly = await request("GET", "/api/bookmarks/?unread=no");
+  expectStatus(readOnly, 200, "read filter");
+  assert.ok(readOnly.body.results.length > 0);
+  assert.ok(readOnly.body.results.every((bookmark) => !bookmark.unread));
+  const bundle = await request("POST", "/api/bundles/", {
+    name: "Synthetic bundle",
+    all_tags: '"' + spacedTagName + '"',
+    filter_unread: "no",
+    filter_shared: "no",
+  });
+  expectStatus(bundle, 201, "create bundle");
+  const bundlePath = `/api/bundles/${bundle.body.id}/`;
+  const bundlePage = await request("GET", "/api/bundles/?limit=1");
+  expectStatus(bundlePage, 200, "list bundles");
+  assert.equal(bundlePage.body.results[0].id, bundle.body.id);
+  const bundleResults = await request("GET", `/api/bookmarks/?bundle=${bundle.body.id}`);
+  expectStatus(bundleResults, 200, "bundle filter");
+  assert.deepEqual(
+    bundleResults.body.results.map((bookmark) => bookmark.id),
+    [activeForTags.body.id],
+  );
+  expectStatus(
+    await request("PATCH", bundlePath, { name: "Renamed bundle" }),
+    200,
+    "update bundle",
+  );
+  assert.equal((await request("GET", bundlePath)).body.name, "Renamed bundle");
+  expectStatus(await request("DELETE", bundlePath), 204, "delete bundle");
+  expectStatus(await request("GET", bundlePath), 404, "deleted bundle");
+  // Loopback is deliberately excluded from metadata scraping.
+  const checkUrl = `http://127.0.0.1/${randomUUID()}`;
+  const checked = await request(
+    "GET",
+    "/api/bookmarks/check/?" + new URLSearchParams({ url: checkUrl }),
+  );
+  expectStatus(checked, 200, "bookmark check without an outbound request");
+  assert.deepEqual(checked.body, {
+    bookmark: null,
+    metadata: { url: checkUrl, title: null, description: null, preview_image: null },
+    auto_tags: [],
+  });
+  const expression = new URLSearchParams({
+    q: `(#${activeTagName} OR #missing) AND NOT !untagged`,
+  });
+  const expressionResults = await request("GET", "/api/bookmarks/?" + expression);
+  expectStatus(expressionResults, 200, "Boolean search");
+  assert.deepEqual(
+    expressionResults.body.results.map((bookmark) => bookmark.id),
+    [activeForTags.body.id],
+  );
+  const checkExisting = new URLSearchParams({ url: checkUrl });
+  const synthetic = await request("POST", "/api/bookmarks/", {
+    url: checkUrl,
+    date_added: "2020-01-01T00:00:00Z",
+  });
+  expectStatus(synthetic, 201, "create with date_added");
+  assert.equal(synthetic.body.date_added, "2020-01-01T00:00:00.000Z");
+  assert.equal(
+    (await request("GET", "/api/bookmarks/check/?" + checkExisting)).body.bookmark.id,
+    synthetic.body.id,
+  );
+  expectStatus(
+    await request("GET", "/api/bookmarks/shared/?user=synthetic", undefined, false),
+    401,
+    "anonymous sharing disabled",
+  );
+  const sharedDisabled = await request("GET", "/api/bookmarks/shared/?user=synthetic");
+  expectStatus(sharedDisabled, 200, "authenticated shared list");
+  assert.equal(sharedDisabled.body.count, 0);
+  const discovery = await fetch(origin + "/api/", {
+    headers: { Authorization: "Bearer " + token },
+  });
+  assert.equal(discovery.status, 200, "Bearer-authenticated API root");
+  const upload = new FormData();
+  const assetPayload = "synthetic asset".repeat(20000);
+  upload.set("file", new File([assetPayload], "example.txt", { type: "text/plain" }));
+  const assetPath = `/api/bookmarks/${activeForTags.body.id}/assets/`;
+  const uploaded = await fetch(origin + assetPath + "upload/", {
+    method: "POST",
+    headers: { Authorization: "Token " + token },
+    body: upload,
+  });
+  assert.equal(uploaded.status, 201, await uploaded.clone().text());
+  const asset = await uploaded.json();
+  assert.equal((await request("GET", assetPath)).body.results[0].id, asset.id);
+  const download = await fetch(origin + assetPath + asset.id + "/download/", {
+    headers: { Authorization: "Token " + token },
+  });
+  assert.equal(download.status, 200);
+  assert.match(download.headers.get("Content-Disposition"), /^attachment/);
+  assert.equal(await download.text(), assetPayload);
+  expectStatus(await request("DELETE", assetPath + asset.id + "/"), 204, "delete asset");
+  const snapshot = new FormData();
+  snapshot.set("url", archiveUrl);
+  snapshot.set("file", new File(["<html>Synthetic snapshot</html>"], "snapshot.html"));
+  const singlefile = await fetch(origin + "/api/bookmarks/singlefile/", {
+    method: "POST",
+    headers: { Authorization: "Token " + token },
+    body: snapshot,
+  });
+  assert.equal(singlefile.status, 201, await singlefile.clone().text());
+  const snapshots = await request("GET", `/api/bookmarks/${archivedForTags.body.id}/assets/`);
+  assert.equal(snapshots.body.results[0].asset_type, "snapshot");
   const unusedName = `unused-${randomUUID()}`;
   expectStatus(await request("POST", "/api/tags/", { name: unusedName }), 201, "create unused tag");
   const unusedPath = `/api/tags/?q=${unusedName}`;
@@ -499,11 +607,11 @@ try {
   const literalTags = await request("GET", "/api/tags/?q=%25_no_matching_tag");
   assert.equal(literalTags.body.count, 0);
 
-  expectStatus(await request("POST", `/api/bookmarks/${id}/archive/`), 200, "archive");
+  expectStatus(await request("POST", `/api/bookmarks/${id}/archive/`), 204, "archive");
   const archived = await request("GET", "/api/bookmarks/archived/");
   expectStatus(archived, 200, "archived list");
   assert.ok(archived.body.results.some((bookmark) => bookmark.id === id));
-  expectStatus(await request("POST", `/api/bookmarks/${id}/unarchive/`), 200, "unarchive");
+  expectStatus(await request("POST", `/api/bookmarks/${id}/unarchive/`), 204, "unarchive");
 
   expectStatus(await request("DELETE", `/api/bookmarks/${id}/`), 204, "delete");
   const missing = await request("GET", `/api/bookmarks/${id}/`);

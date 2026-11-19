@@ -1,29 +1,29 @@
 import { DurableObject } from "cloudflare:workers";
-import {
-  and,
-  desc,
-  eq,
-  exists,
-  gte,
-  inArray,
-  like,
-  notExists,
-  or,
-  sql,
-  type SQL,
-} from "drizzle-orm";
+import { and, asc, desc, eq, exists, gt, inArray, notExists, or, sql, type SQL } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/durable-sqlite";
 import { migrate } from "drizzle-orm/durable-sqlite/migrator";
 import migrations from "../../drizzle/migrations/migrations.js";
-import { bookmarks, bookmarkTags, importBatches, tags } from "../db/schema.js";
+import {
+  bookmarkAssetChunks,
+  bookmarkAssets,
+  bookmarks,
+  bookmarkTags,
+  bundles,
+  importBatches,
+  tags,
+} from "../db/schema.js";
 import type { ImportBatchInput, ImportBatchResult, ImportStats } from "../import/batch-schema.js";
 import { stableJson } from "../import/digest.js";
 import type {
   BookmarkCreate,
   BookmarkDTO,
   BookmarkPatch,
+  BookmarkSort,
+  BundleCreate,
+  BundlePatch,
   TagDTO,
 } from "../api/linkding/v1/contract.js";
+import { searchPredicate } from "../api/linkding/v1/search.js";
 import type { Env } from "../env.js";
 import { safeIconPath } from "../shared/site-host.js";
 import { listMcpTags, mergeMcpTags, previewMcpTagMerges, deleteMcpTags } from "./tag-management.js";
@@ -48,6 +48,8 @@ function toLinkding(row: BookmarkRow, tagNames: string[]): BookmarkDTO {
     web_archive_snapshot_url: null,
     favicon_url: safeIconPath(row.url),
     preview_image_url: null,
+    website_title: null,
+    website_description: null,
   };
 }
 
@@ -96,6 +98,24 @@ function reconcileTags(db: QueryTransaction, bookmarkId: number, input: readonly
 }
 
 /** One SQLite-backed Durable Object per logical account, exposed using native DO RPC. */
+function assetDto(row: typeof bookmarkAssets.$inferSelect) {
+  return { ...row, date_created: row.date_created.toISOString(), status: "complete" as const };
+}
+
+function bundleDto(row: typeof bundles.$inferSelect) {
+  return {
+    ...row,
+    date_created: row.date_created.toISOString(),
+    date_modified: row.date_modified.toISOString(),
+  };
+}
+
+function bundleTags(text: string): string[] {
+  return Array.from(text.matchAll(/"([^"]+)"|'([^']+)'|([^\s"']+)/g), (match) =>
+    (match[1] ?? match[2] ?? match[3]).toLowerCase(),
+  );
+}
+
 export class BookmarkDO extends DurableObject<Env> {
   private readonly db;
 
@@ -116,43 +136,62 @@ export class BookmarkDO extends DurableObject<Env> {
     limit: number;
     offset: number;
     q?: string;
+    linkdingSearch?: boolean;
     tag?: string;
     /** Flareding v1-only AND tag filters; never used by Linkding v1 routes. */
     tagsAll?: string[];
     unread?: boolean;
+    shared?: boolean;
+    sharedCollection?: boolean;
+    sort?: BookmarkSort;
+    bundle?: number;
     archived?: boolean;
     modifiedSince?: string;
     addedSince?: string;
   }): Promise<{ count: number; results: BookmarkDTO[] }> {
     const predicates: SQL[] = [];
-    if (options.archived === undefined) predicates.push(eq(bookmarks.isArchived, false));
-    else predicates.push(eq(bookmarks.isArchived, options.archived));
-    // Consume standalone linkding tag filters and the legacy unread keyword.
-    // Quotes in the remaining query stay part of the text search.
-    let queryUnread = false;
-    const queryTags: string[] = [];
-    const query = options.q
-      ?.replace(
-        /"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|(^|\s)(!unread|#(?:"([^"]+)"|'([^']+)'|([^\s"']+)))(?=\s|$)/gi,
-        (token, boundary, filter, doubleQuoted, singleQuoted, bare) => {
-          if (boundary === undefined) return token;
-          if (filter.toLowerCase() === "!unread") queryUnread = true;
-          else queryTags.push(doubleQuoted ?? singleQuoted ?? bare);
-          return " ";
-        },
-      )
-      .trim();
-    if (query) {
-      const pattern = `%${query}%`;
-      const match = or(
-        like(bookmarks.title, pattern),
-        like(bookmarks.description, pattern),
-        like(bookmarks.notes, pattern),
-        like(bookmarks.url, pattern),
+    if (!options.sharedCollection)
+      predicates.push(eq(bookmarks.isArchived, options.archived ?? false));
+    const tagAssociations = this.db
+      .select({ id: bookmarkTags.bookmarkId })
+      .from(bookmarkTags)
+      .where(eq(bookmarkTags.bookmarkId, bookmarks.id));
+    const hasTag = (name: string) =>
+      exists(
+        this.db
+          .select({ id: bookmarkTags.bookmarkId })
+          .from(bookmarkTags)
+          .innerJoin(tags, eq(tags.id, bookmarkTags.tagId))
+          .where(
+            and(
+              eq(bookmarkTags.bookmarkId, bookmarks.id),
+              sql`lower(${tags.name}) = lower(${name})`,
+            ),
+          ),
       );
+    const textMatch = (term: string) => {
+      const value = term.toLowerCase();
+      return or(
+        sql`instr(lower(${bookmarks.title}), ${value}) > 0`,
+        sql`instr(lower(${bookmarks.description}), ${value}) > 0`,
+        sql`instr(lower(${bookmarks.notes}), ${value}) > 0`,
+        sql`instr(lower(${bookmarks.url}), ${value}) > 0`,
+      );
+    };
+    if (options.q?.trim()) {
+      const match = options.linkdingSearch
+        ? searchPredicate(options.q, (kind, value) => {
+            if (kind === "tag") return hasTag(value);
+            if (kind === "text") return textMatch(value);
+            if (value.toLowerCase() === "unread") return eq(bookmarks.isUnread, true);
+            if (value.toLowerCase() === "untagged") return notExists(tagAssociations);
+            return undefined;
+          })
+        : textMatch(options.q.trim());
       if (match) predicates.push(match);
     }
-    if (options.unread === true || queryUnread) predicates.push(eq(bookmarks.isUnread, true));
+    if (options.unread !== undefined) predicates.push(eq(bookmarks.isUnread, options.unread));
+    if (options.shared !== undefined) predicates.push(eq(bookmarks.shared, options.shared));
     if (options.tag) {
       // Tag name is indexed UNIQUE; bookmark_tags primary key supports the
       // following join without scanning every bookmark document.
@@ -163,30 +202,52 @@ export class BookmarkDO extends DurableObject<Env> {
         .where(eq(tags.name, options.tag));
       predicates.push(inArray(bookmarks.id, tagged));
     }
-    for (const tagName of [...(options.tagsAll ?? []), ...queryTags]) {
-      // One indexed EXISTS predicate per selected tag. Each required tag
-      // must be associated with the bookmark (AND, not OR).
-      predicates.push(
-        exists(
-          this.db
-            .select({ id: bookmarkTags.bookmarkId })
-            .from(bookmarkTags)
-            .innerJoin(tags, eq(tags.id, bookmarkTags.tagId))
-            .where(
-              and(
-                eq(bookmarkTags.bookmarkId, bookmarks.id),
-                sql`lower(${tags.name}) = lower(${tagName})`,
-              ),
-            ),
-        ),
-      );
-    }
+    for (const tagName of options.tagsAll ?? []) predicates.push(hasTag(tagName));
     if (options.modifiedSince) {
-      predicates.push(gte(bookmarks.updatedAt, new Date(options.modifiedSince)));
+      predicates.push(gt(bookmarks.updatedAt, new Date(options.modifiedSince)));
     }
     if (options.addedSince) {
-      predicates.push(gte(bookmarks.createdAt, new Date(options.addedSince)));
+      predicates.push(gt(bookmarks.createdAt, new Date(options.addedSince)));
     }
+    const bundle =
+      options.bundle === undefined
+        ? undefined
+        : this.db.select().from(bundles).where(eq(bundles.id, options.bundle)).get();
+    if (bundle) {
+      for (const term of bundle.search.match(/"[^"]+"|\S+/g) ?? []) {
+        const match = textMatch(term.replace(/^"|"$/g, ""));
+        if (match) predicates.push(match);
+      }
+      const tagged = (names: string[]) =>
+        this.db
+          .select({ id: bookmarkTags.bookmarkId })
+          .from(bookmarkTags)
+          .innerJoin(tags, eq(tags.id, bookmarkTags.tagId))
+          .where(
+            and(
+              eq(bookmarkTags.bookmarkId, bookmarks.id),
+              inArray(sql`lower(${tags.name})`, names),
+            ),
+          );
+      const any = bundleTags(bundle.any_tags);
+      const excluded = bundleTags(bundle.excluded_tags);
+      if (any.length) predicates.push(exists(tagged(any)));
+      if (excluded.length) predicates.push(notExists(tagged(excluded)));
+      for (const tag of bundleTags(bundle.all_tags)) predicates.push(exists(tagged([tag])));
+      if (bundle.filter_unread !== "off")
+        predicates.push(eq(bookmarks.isUnread, bundle.filter_unread === "yes"));
+      if (bundle.filter_shared !== "off")
+        predicates.push(eq(bookmarks.shared, bundle.filter_shared === "yes"));
+    }
+    const title = sql`lower(coalesce(nullif(${bookmarks.title}, ''), ${bookmarks.url}))`;
+    const sort = {
+      added_asc: asc(bookmarks.createdAt),
+      added_desc: desc(bookmarks.createdAt),
+      modified_asc: asc(bookmarks.updatedAt),
+      modified_desc: desc(bookmarks.updatedAt),
+      title_asc: asc(title),
+      title_desc: desc(title),
+    };
     const where = and(...predicates);
     const total = this.db
       .select({ count: sql<number>`count(*)` })
@@ -197,7 +258,7 @@ export class BookmarkDO extends DurableObject<Env> {
       .select()
       .from(bookmarks)
       .where(where)
-      .orderBy(desc(bookmarks.createdAt), desc(bookmarks.id))
+      .orderBy(sort[options.sort ?? "added_desc"], desc(bookmarks.id))
       .limit(options.limit)
       .offset(options.offset)
       .all();
@@ -213,9 +274,202 @@ export class BookmarkDO extends DurableObject<Env> {
     };
   }
 
+  async listAssets(bookmarkId: number, limit: number, offset: number) {
+    if (
+      !this.db
+        .select({ id: bookmarks.id })
+        .from(bookmarks)
+        .where(eq(bookmarks.id, bookmarkId))
+        .get()
+    )
+      return null;
+    const scope = eq(bookmarkAssets.bookmark, bookmarkId);
+    const count =
+      this.db
+        .select({ count: sql<number>`count(*)` })
+        .from(bookmarkAssets)
+        .where(scope)
+        .get()?.count ?? 0;
+    const rows = this.db
+      .select()
+      .from(bookmarkAssets)
+      .where(scope)
+      .orderBy(desc(bookmarkAssets.id))
+      .limit(limit)
+      .offset(offset)
+      .all();
+    return { count, results: rows.map(assetDto) };
+  }
+
+  async getAsset(bookmarkId: number, assetId: number, download: boolean) {
+    const row = this.db
+      .select()
+      .from(bookmarkAssets)
+      .where(and(eq(bookmarkAssets.bookmark, bookmarkId), eq(bookmarkAssets.id, assetId)))
+      .get();
+    if (!row) return null;
+    const asset = assetDto(row);
+    if (!download) return { asset, bytes: null };
+    const bytes = new Uint8Array(row.file_size);
+    const chunks = this.db
+      .select({ bytes: bookmarkAssetChunks.bytes })
+      .from(bookmarkAssetChunks)
+      .where(eq(bookmarkAssetChunks.assetId, assetId))
+      .orderBy(bookmarkAssetChunks.sequence)
+      .all();
+    let offset = 0;
+    for (const chunk of chunks) {
+      const data = new Uint8Array(chunk.bytes);
+      bytes.set(data, offset);
+      offset += data.byteLength;
+    }
+    if (offset !== bytes.byteLength) throw new Error("Incomplete bookmark asset");
+    return { asset, bytes };
+  }
+
+  async deleteAsset(bookmarkId: number, assetId: number) {
+    return Boolean(
+      this.db
+        .delete(bookmarkAssets)
+        .where(and(eq(bookmarkAssets.bookmark, bookmarkId), eq(bookmarkAssets.id, assetId)))
+        .returning({ id: bookmarkAssets.id })
+        .get(),
+    );
+  }
+
+  async saveAsset(
+    target: { bookmarkId: number } | { url: string },
+    file: { bytes: Uint8Array; name: string; contentType: string },
+  ) {
+    return this.db.transaction((tx) => {
+      const snapshot = "url" in target;
+      const timestamp = new Date();
+      const current = tx
+        .select({ id: bookmarks.id })
+        .from(bookmarks)
+        .where(snapshot ? eq(bookmarks.urlKey, target.url) : eq(bookmarks.id, target.bookmarkId))
+        .get();
+      const bookmark =
+        current ??
+        (snapshot
+          ? tx
+              .insert(bookmarks)
+              .values({
+                url: target.url,
+                urlKey: target.url,
+                title: "",
+                createdAt: timestamp,
+                updatedAt: timestamp,
+              })
+              .returning({ id: bookmarks.id })
+              .get()
+          : null);
+      if (!bookmark) return null;
+      const row = tx
+        .insert(bookmarkAssets)
+        .values({
+          bookmark: bookmark.id,
+          date_created: timestamp,
+          file_size: file.bytes.byteLength,
+          asset_type: snapshot ? "snapshot" : "upload",
+          display_name: file.name,
+          content_type: file.contentType,
+        })
+        .returning()
+        .get();
+      const chunkSize = 256 * 1024;
+      for (let offset = 0; offset < file.bytes.byteLength; offset += chunkSize) {
+        tx.insert(bookmarkAssetChunks)
+          .values({
+            assetId: row.id,
+            sequence: offset / chunkSize,
+            bytes: Buffer.from(file.bytes.subarray(offset, offset + chunkSize)),
+          })
+          .run();
+      }
+      return assetDto(row);
+    });
+  }
+
+  async listBundles(limit: number, offset: number) {
+    const count =
+      this.db
+        .select({ count: sql<number>`count(*)` })
+        .from(bundles)
+        .get()?.count ?? 0;
+    const results = this.db
+      .select()
+      .from(bundles)
+      .orderBy(bundles.order, bundles.id)
+      .limit(limit)
+      .offset(offset)
+      .all();
+    return { count, results: results.map(bundleDto) };
+  }
+
+  async getBundle(id: number) {
+    const row = this.db.select().from(bundles).where(eq(bundles.id, id)).get();
+    return row ? bundleDto(row) : null;
+  }
+
+  async createBundle(input: BundleCreate) {
+    return this.db.transaction((tx) => {
+      const last = tx
+        .select({ order: bundles.order })
+        .from(bundles)
+        .orderBy(desc(bundles.order))
+        .limit(1)
+        .get();
+      const now = new Date();
+      const row = tx
+        .insert(bundles)
+        .values({
+          ...input,
+          order: input.order ?? (last?.order ?? -1) + 1,
+          date_created: now,
+          date_modified: now,
+        })
+        .returning()
+        .get();
+      return bundleDto(row);
+    });
+  }
+
+  async updateBundle(id: number, input: BundlePatch) {
+    const row = this.db
+      .update(bundles)
+      .set({ ...input, date_modified: new Date() })
+      .where(eq(bundles.id, id))
+      .returning()
+      .get();
+    return row ? bundleDto(row) : null;
+  }
+
+  async deleteBundle(id: number) {
+    return this.db.transaction((tx) => {
+      if (!tx.delete(bundles).where(eq(bundles.id, id)).returning({ id: bundles.id }).get())
+        return false;
+      const remaining = tx
+        .select({ id: bundles.id, order: bundles.order })
+        .from(bundles)
+        .orderBy(bundles.order, bundles.id)
+        .all();
+      remaining.forEach((row, order) => {
+        if (row.order !== order)
+          tx.update(bundles).set({ order }).where(eq(bundles.id, row.id)).run();
+      });
+      return true;
+    });
+  }
+
   async getBookmark(id: number): Promise<BookmarkDTO | null> {
     const row = this.db.select().from(bookmarks).where(eq(bookmarks.id, id)).get();
     return row ? toLinkding(row, tagNames(this.db, id)) : null;
+  }
+
+  async getBookmarkByUrl(url: string): Promise<BookmarkDTO | null> {
+    const row = this.db.select().from(bookmarks).where(eq(bookmarks.urlKey, url)).get();
+    return row ? toLinkding(row, tagNames(this.db, row.id)) : null;
   }
 
   async saveBookmark(input: BookmarkCreate): Promise<BookmarkDTO> {
@@ -228,7 +482,8 @@ export class BookmarkDO extends DurableObject<Env> {
         ...(input.is_archived !== undefined ? { isArchived: input.is_archived } : {}),
         ...(input.unread !== undefined ? { isUnread: input.unread } : {}),
         ...(input.shared !== undefined ? { shared: input.shared } : {}),
-        updatedAt: new Date(),
+        ...(input.date_added ? { createdAt: new Date(input.date_added) } : {}),
+        updatedAt: input.date_modified ? new Date(input.date_modified) : new Date(),
       };
       const row = existing
         ? tx.update(bookmarks).set(values).where(eq(bookmarks.id, existing.id)).returning().get()
@@ -244,8 +499,8 @@ export class BookmarkDO extends DurableObject<Env> {
               isArchived: input.is_archived ?? false,
               isUnread: input.unread ?? false,
               shared: input.shared ?? false,
-              createdAt: new Date(),
-              updatedAt: new Date(),
+              createdAt: input.date_added ? new Date(input.date_added) : new Date(),
+              updatedAt: input.date_modified ? new Date(input.date_modified) : new Date(),
             })
             .returning()
             .get();
@@ -280,7 +535,8 @@ export class BookmarkDO extends DurableObject<Env> {
         ...(input.is_archived !== undefined ? { isArchived: input.is_archived } : {}),
         ...(input.unread !== undefined ? { isUnread: input.unread } : {}),
         ...(input.shared !== undefined ? { shared: input.shared } : {}),
-        updatedAt: new Date(),
+        ...(input.date_added ? { createdAt: new Date(input.date_added) } : {}),
+        updatedAt: input.date_modified ? new Date(input.date_modified) : new Date(),
       };
       const row = tx.update(bookmarks).set(values).where(eq(bookmarks.id, id)).returning().get();
       if (!row) return null;

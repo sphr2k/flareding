@@ -1,5 +1,6 @@
 import { OpenAPIHandler } from "@orpc/openapi/fetch";
 import { router as healthRoutes } from "./api/health.js";
+import { handleBookmarkAssets } from "./api/linkding/v1/assets.js";
 import { linkdingV1Routes } from "./api/linkding/v1/routes.js";
 import { flaredingV1Routes } from "./api/flareding/v1/routes.js";
 import { authenticateToken, authError } from "./api/auth.js";
@@ -36,11 +37,17 @@ export default {
           sessionSecret: accessReady(env) ? env.SESSION_SECRET : undefined,
         });
       }
-      if (path !== "/api/health") {
+      const publicSharing =
+        path === "/api/bookmarks/shared/" &&
+        request.method === "GET" &&
+        env.LINKDING_PUBLIC_SHARING === "true" &&
+        Boolean(env.LINKDING_SHARE_USERNAME) &&
+        !request.headers.has("Authorization");
+      if (path !== "/api/health" && !publicSharing) {
         // External integrations use the original linkding token header.
         // The web UI instead receives a short-lived, HttpOnly signed session.
         if (request.headers.has("Authorization")) {
-          const auth = await authenticateToken(request, env.API_TOKEN);
+          const auth = await authenticateToken(request, env.API_TOKEN, { allowBearer: true });
           if (auth !== "ok") return authError(auth);
         } else if (
           await hasBrowserSession(
@@ -60,6 +67,8 @@ export default {
         // Session/token authorization above applies before any DNS or fetch.
         return handleSiteIcon(request, { waitUntil: (promise) => ctx.waitUntil(promise) });
       }
+      const assetResponse = await handleBookmarkAssets(request, env);
+      if (assetResponse) return assetResponse;
       const { matched, response } = await handler.handle(request, {
         prefix: "/api",
         context: { env, requestUrl: request.url },

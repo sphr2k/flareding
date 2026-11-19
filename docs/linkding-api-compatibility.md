@@ -33,11 +33,15 @@ allocating a million records or accessing personal data.
 
 ## Current compatibility boundary
 
-Full compatibility has **not** yet been established. The source comparison
-identifies material differences beyond pagination: upstream archive actions
-return 204; upstream serializers include legacy website metadata fields;
-authentication accepts both Token and Bearer; shared collections, URL metadata
-checking, bundles and bookmark asset routes exist upstream; search
-supports more than the current text search plus `!unread` handling. Error and
-validation semantics also require conformance coverage. Those differences must
-be resolved and tested before describing this API as 100% compatible.
+The REST routes cover bookmark CRUD and archive actions, tags, profiles,
+URL checks, bundles and bundle filtering, asset metadata and download,
+multipart upload, SingleFile snapshots and opt-in sharing. Bookmark search
+supports phrases, tag terms, unread/untagged terms and logical operators.
+The API accepts Token and Bearer with the same configured account credential.
+
+Flareding has one account and one static profile. It does not emulate upstream
+per-user configuration, automatic tagging or scheduled archive snapshots.
+Metadata is fetched on demand, with bounded outbound requests, and asset
+uploads are limited to 8 MiB. Focused tests exercise the route contracts against
+local workerd and SQLite. Exact upstream validation/error bodies, Unicode
+collation and end-to-end behavior across all clients are not established.
