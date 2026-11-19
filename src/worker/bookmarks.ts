@@ -1,5 +1,17 @@
 import { DurableObject } from "cloudflare:workers";
-import { and, desc, eq, exists, gte, inArray, like, or, sql, type SQL } from "drizzle-orm";
+import {
+  and,
+  desc,
+  eq,
+  exists,
+  gte,
+  inArray,
+  like,
+  notExists,
+  or,
+  sql,
+  type SQL,
+} from "drizzle-orm";
 import { drizzle } from "drizzle-orm/durable-sqlite";
 import { migrate } from "drizzle-orm/durable-sqlite/migrator";
 import migrations from "../../drizzle/migrations/migrations.js";
@@ -290,41 +302,27 @@ export class BookmarkDO extends DurableObject<Env> {
     );
   }
 
-  /** Upstream Linkding v1 contract: list every tag, including unused tags. */
   async listTags(options: {
     limit: number;
     offset: number;
     q?: string;
-  }): Promise<{ count: number; results: TagDTO[] }> {
-    return this.queryTagPage({ ...options, includeArchived: true });
-  }
-
-  /** Versioned Flareding v1 overlay: default only tags from active bookmarks. */
-  async listFlaredingV1Tags(options: {
-    limit: number;
-    offset: number;
-    q?: string;
     includeArchived: boolean;
+    includeUnused: boolean;
   }): Promise<{ count: number; results: TagDTO[] }> {
-    return this.queryTagPage(options);
-  }
-
-  private queryTagPage(options: {
-    limit: number;
-    offset: number;
-    q?: string;
-    includeArchived: boolean;
-  }): { count: number; results: TagDTO[] } {
     const term = options.q?.trim();
-    const inScope = options.includeArchived
-      ? undefined
-      : exists(
-          this.db
-            .select({ id: bookmarkTags.bookmarkId })
-            .from(bookmarkTags)
-            .innerJoin(bookmarks, eq(bookmarkTags.bookmarkId, bookmarks.id))
-            .where(and(eq(bookmarkTags.tagId, tags.id), eq(bookmarks.isArchived, false))),
-        );
+    const associations = this.db
+      .select({ id: bookmarkTags.bookmarkId })
+      .from(bookmarkTags)
+      .where(eq(bookmarkTags.tagId, tags.id));
+    const activeAssociations = this.db
+      .select({ id: bookmarkTags.bookmarkId })
+      .from(bookmarkTags)
+      .innerJoin(bookmarks, eq(bookmarkTags.bookmarkId, bookmarks.id))
+      .where(and(eq(bookmarkTags.tagId, tags.id), eq(bookmarks.isArchived, false)));
+    const inScope = or(
+      exists(options.includeArchived ? associations : activeAssociations),
+      options.includeUnused ? notExists(associations) : undefined,
+    );
     const filter = and(
       term ? sql`instr(lower(${tags.name}), lower(${term})) > 0` : undefined,
       inScope,

@@ -84,13 +84,22 @@ export const pageInput = z.object({
   q: z.string().optional(),
 });
 
-export const tagPageInput = pageInput;
+export const tagPageInput = pageInput.extend({
+  include_archived: z
+    .enum(["false", "true"])
+    .default("false")
+    .transform((value) => value === "true"),
+  include_unused: z
+    .enum(["false", "true"])
+    .default("false")
+    .transform((value) => value === "true"),
+});
 
 export const bookmarkPageInput = pageInput.extend({
   tag: z.string().trim().max(120).optional(),
   unread: z
-    .enum(["true", "false"])
-    .transform((value) => value === "true")
+    .enum(["true", "false", "yes", "no"])
+    .transform((value) => value === "true" || value === "yes")
     .optional(),
   modified_since: z.string().datetime().optional(),
   added_since: z.string().datetime().optional(),
@@ -103,6 +112,8 @@ export const pageOutput = <T extends z.ZodType>(item: T) =>
     previous: z.string().url().nullable(),
     results: z.array(item),
   });
+
+export const tagPageOutput = pageOutput(tagDto);
 
 export type BookmarkCreate = z.infer<typeof bookmarkCreate>;
 export type BookmarkPatch = z.infer<typeof bookmarkPatch>;

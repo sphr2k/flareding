@@ -350,6 +350,13 @@ try {
   assert.ok(linkthingUnread.body.results.some((bookmark) => bookmark.id === id));
   const linkthingSearch = await request("GET", "/api/bookmarks/?q=%21unread%20Updated");
   assert.ok(linkthingSearch.body.results.some((bookmark) => bookmark.id === id));
+  const ribbonUnread = await request(
+    "GET",
+    "/api/bookmarks/?limit=100&offset=0&sort=added_desc&unread=yes",
+  );
+  expectStatus(ribbonUnread, 200, "Ribbon unread query");
+  assert.equal(ribbonUnread.body.count, unreadOnly.body.count);
+  assert.ok(ribbonUnread.body.results.some((bookmark) => bookmark.id === id));
   const explicitFalse = await request("GET", "/api/bookmarks/?unread=false");
   expectStatus(explicitFalse, 200, "false unread must not filter");
   assert.ok(explicitFalse.body.results.some((bookmark) => bookmark.id === id));
@@ -374,8 +381,7 @@ try {
         "upstream pagination fallback",
       );
   }
-  // The additive Flareding v1 API filters by active usage; upstream Linkding
-  // tag listing remains unchanged even when a tag belongs only to archived data.
+  // Archive-only tags are hidden unless explicitly requested.
   const archiveOnlyName = `archive-only-${randomUUID()}`;
   const sharedTagName = `shared-${randomUUID()}`;
   const activeTagName = `active-${randomUUID()}`;
@@ -395,26 +401,29 @@ try {
     is_archived: true,
   });
   expectStatus(archivedForTags, 201, "archived synthetic bookmark for tags");
-  const upstreamAll = await request("GET", `/api/tags/?q=${archiveOnlyName}`);
-  expectStatus(upstreamAll, 200, "upstream Linkding tags unchanged");
-  assert.equal(upstreamAll.body.count, 1);
-  assert.equal(upstreamAll.body.results[0].name, archiveOnlyName);
-  const overlayArchivedHidden = await request(
+  const tagsArchivedHidden = await request("GET", `/api/tags/?q=${archiveOnlyName}`);
+  expectStatus(tagsArchivedHidden, 200, "active-only tags by default");
+  assert.equal(tagsArchivedHidden.body.count, 0);
+  const tagsArchivedIncluded = await request(
     "GET",
-    `/api/flareding/v1/tags/?q=${archiveOnlyName}`,
+    `/api/tags/?q=${archiveOnlyName}&include_archived=true`,
   );
-  expectStatus(overlayArchivedHidden, 200, "Flareding overlay active-only default");
-  assert.equal(overlayArchivedHidden.body.count, 0);
-  const overlayArchivedIncluded = await request(
-    "GET",
-    `/api/flareding/v1/tags/?q=${archiveOnlyName}&include_archived=true`,
+  expectStatus(tagsArchivedIncluded, 200, "include archived tags");
+  assert.equal(tagsArchivedIncluded.body.count, 1);
+  const tagsShared = await request("GET", `/api/tags/?q=${sharedTagName}`);
+  expectStatus(tagsShared, 200, "shared tag from active bookmark remains visible");
+  assert.equal(tagsShared.body.count, 1);
+  const unusedName = `unused-${randomUUID()}`;
+  expectStatus(await request("POST", "/api/tags/", { name: unusedName }), 201, "create unused tag");
+  const unusedPath = `/api/tags/?q=${unusedName}`;
+  assert.equal((await request("GET", unusedPath)).body.count, 0);
+  assert.equal((await request("GET", unusedPath + "&include_archived=true")).body.count, 0);
+  assert.equal((await request("GET", unusedPath + "&include_unused=true")).body.count, 1);
+  assert.equal(
+    (await request("GET", `/api/tags/?q=${archiveOnlyName}&include_unused=true`)).body.count,
+    0,
   );
-  expectStatus(overlayArchivedIncluded, 200, "Flareding overlay include archived");
-  assert.equal(overlayArchivedIncluded.body.count, 1);
-  const overlayShared = await request("GET", `/api/flareding/v1/tags/?q=${sharedTagName}`);
-  expectStatus(overlayShared, 200, "shared tag from active bookmark remains visible");
-  assert.equal(overlayShared.body.count, 1);
-  const bookmarkSearchPath = "/api/flareding/v1/bookmarks/search/";
+  const bookmarkSearchPath = "/api/bookmarks/search/";
   const matchedAnd = await request("POST", bookmarkSearchPath, {
     query: "Synthetic",
     tags: [sharedTagName, activeTagName],
@@ -455,8 +464,8 @@ try {
     "versioned search cannot be read anonymously",
   );
 
-  const overlayBad = await request("GET", "/api/flareding/v1/tags/?include_archived=all");
-  assert.ok([400, 422].includes(overlayBad.status));
+  const invalidVisibility = await request("GET", "/api/tags/?include_archived=all");
+  assert.ok([400, 422].includes(invalidVisibility.status));
   expectStatus(
     await request("DELETE", `/api/bookmarks/${activeForTags.body.id}/`),
     204,

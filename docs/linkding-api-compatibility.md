@@ -13,8 +13,9 @@ Primary references:
 - [Locked dependencies](https://github.com/sissbruecker/linkding/blob/v1.47.0/uv.lock)
 
 Versioned source for this upstream contract: `src/api/linkding/v1/`.
-Flareding-specific additions must use `src/api/flareding/v1/` and must not
-change this contract. See [API boundaries](api-architecture.md).
+Flareding-specific extensions can live in `src/api/flareding/v1/` and share
+the public `/api/` router. The public tag list intentionally filters out
+archived-only and unused tags by default. See [API boundaries](api-architecture.md).
 
 ## Pagination
 
@@ -36,7 +37,7 @@ Full compatibility has **not** yet been established. The source comparison
 identifies material differences beyond pagination: upstream archive actions
 return 204; upstream serializers include legacy website metadata fields;
 authentication accepts both Token and Bearer; shared collections, URL metadata
-checking, bundles, user profile and bookmark asset routes exist upstream; search
+checking, bundles and bookmark asset routes exist upstream; search
 supports more than the current text search plus `!unread` handling. Error and
 validation semantics also require conformance coverage. Those differences must
 be resolved and tested before describing this API as 100% compatible.

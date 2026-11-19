@@ -14,7 +14,7 @@ remain tracked in GitHub Issues.
 - Validation: Zod 4 CRUD validators generated from Drizzle. Separate linkding field mappings only.
 - HTTP: oRPC v2 OpenAPIHandler; upstream-compatible Linkding v1 routes live in
   `src/api/linkding/v1/`. Additive, typed Flareding v1 extensions live in
-  `src/api/flareding/v1/` under `/api/flareding/v1/*`. See
+  `src/api/flareding/v1/` and use the same public `/api/` router. See
   [API architecture](docs/api-architecture.md).
 - UI: React 19 + Adobe React Spectrum 2. No Tailwind, shadcn or duplicate UI kit.
 - Tooling: Bun 1.4.3, TypeScript 7 via bun check, Vite+ tests/lint/format, cf CLI.

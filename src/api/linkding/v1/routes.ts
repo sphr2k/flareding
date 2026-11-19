@@ -7,6 +7,7 @@ import {
   bookmarkPageInput,
   bookmarkPatch,
   tagPageInput,
+  tagPageOutput,
   pageOutput,
   tagCreate,
   tagDto,
@@ -161,9 +162,13 @@ export const linkdingV1Routes = {
   listTags: procedure
     .meta(openapi({ method: "GET", path: "/tags/" }))
     .input(tagPageInput)
-    .output(pageOutput(tagDto))
+    .output(tagPageOutput)
     .handler(async ({ context, input }) => {
-      const result = await account(context).listTags(input);
+      const result = await account(context).listTags({
+        ...input,
+        includeArchived: input.include_archived,
+        includeUnused: input.include_unused,
+      });
       return {
         ...result,
         ...paginationLinks(context.requestUrl, result.count, input.limit, input.offset),

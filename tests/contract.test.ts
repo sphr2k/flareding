@@ -1,8 +1,4 @@
-import {
-  flaredingV1TagPageInput,
-  flaredingV1TagPageOutput,
-  flaredingV1BookmarkSearchInput,
-} from "../src/api/flareding/v1/contract.js";
+import { flaredingV1BookmarkSearchInput } from "../src/api/flareding/v1/contract.js";
 import { describe, expect, it } from "vite-plus/test";
 import {
   bookmarkCreate,
@@ -10,18 +6,18 @@ import {
   bookmarkDto,
   bookmarkPageInput,
   tagPageInput,
+  tagPageOutput,
 } from "../src/api/linkding/v1/contract.js";
 import { paginationLinks } from "../src/api/linkding/v1/pagination.js";
 import { withAbsoluteFavicon } from "../src/api/linkding/v1/favicon-url.js";
 
 describe("additive Flareding v1 overlay contract", () => {
-  it("types and validates include_archived without altering the Linkding v1 contract", () => {
-    expect(flaredingV1TagPageInput.parse({}).include_archived).toBe(false);
-    expect(flaredingV1TagPageInput.parse({ include_archived: "true" }).include_archived).toBe(true);
-    expect(flaredingV1TagPageInput.safeParse({ include_archived: "all" }).success).toBe(false);
-    expect(Object.keys(tagPageInput.shape)).toEqual(["limit", "offset", "q"]);
+  it("types and validates include_archived on the public tag route", () => {
+    expect(tagPageInput.parse({}).include_archived).toBe(false);
+    expect(tagPageInput.parse({ include_archived: "true" }).include_archived).toBe(true);
+    expect(tagPageInput.safeParse({ include_archived: "all" }).success).toBe(false);
     expect(
-      flaredingV1TagPageOutput.safeParse({
+      tagPageOutput.safeParse({
         count: 1,
         next: null,
         previous: null,
@@ -146,7 +142,9 @@ describe("linkding wire schemas derived from Drizzle", () => {
       tag: "k8s",
     });
     expect(bookmarkPageInput.parse({ unread: "false" })).toMatchObject({ unread: false });
-    expect(bookmarkPageInput.safeParse({ unread: "yes" }).success).toBe(false);
+    expect(bookmarkPageInput.parse({ unread: "yes" }).unread).toBe(true);
+    expect(bookmarkPageInput.parse({ unread: "no" }).unread).toBe(false);
+    expect(bookmarkPageInput.safeParse({ unread: "maybe" }).success).toBe(false);
   });
 
   it("produces linkding-compatible absolute pagination links", () => {

@@ -48,7 +48,7 @@ async function getBookmarks(
   tags: string[],
   offset: number,
 ): Promise<BookmarkPage> {
-  const response = await fetch("/api/flareding/v1/bookmarks/search/", {
+  const response = await fetch("/api/bookmarks/search/", {
     method: "POST",
     credentials: "same-origin",
     headers: { "Content-Type": "application/json" },
