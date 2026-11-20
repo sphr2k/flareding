@@ -14,6 +14,7 @@ const iconUrl = "https://flareding.test/api/site-icons/public.testsite.io";
 function mockFetch(
   opts: {
     html?: string;
+    htmlLength?: number;
     privateDns?: boolean;
     redirectTo?: string;
     iconType?: string;
@@ -55,7 +56,12 @@ function mockFetch(
       return new Response(
         opts.html ??
           '<html><head><link rel="icon" sizes="192x192" href="/large.png"></head></html>',
-        { headers: { "Content-Type": "text/html" } },
+        {
+          headers: {
+            "Content-Type": "text/html",
+            ...(opts.htmlLength ? { "Content-Length": String(opts.htmlLength) } : {}),
+          },
+        },
       );
     }
     if (parsed.pathname === "/manifest.webmanifest") {
@@ -172,6 +178,37 @@ describe("site icon network policy", () => {
     expect(networkCount).toBeLessThanOrEqual(4); // 2 DNS + 1 HTML + 1 icon
   });
 
+  it("discovers touch icons in the bounded prefix of oversized HTML", async () => {
+    for (const declaredLength of [undefined, 150_000]) {
+      const { fetcher, requests } = mockFetch({
+        html:
+          " ".repeat(36_000) +
+          '<link rel="apple-touch-icon" href="/large.png">' +
+          " ".repeat(120_000),
+        htmlLength: declaredLength,
+      });
+      const response = await handleSiteIcon(new Request(iconUrl), { fetcher, cache: null });
+      expect(response.status).toBe(200);
+      expect(requests.some((url) => url.endsWith("/large.png"))).toBe(true);
+      expect(requests.some((url) => url.endsWith("/favicon.ico"))).toBe(false);
+    }
+  });
+
+  it("retries failures cached under the old 12-hour policy", async () => {
+    const { cache, responses } = makeCache();
+    responses.set(
+      iconUrl,
+      new Response(null, {
+        status: 404,
+        headers: { "Cache-Control": "public, max-age=900, s-maxage=43200" },
+      }),
+    );
+    const { fetcher, requests } = mockFetch();
+    const response = await handleSiteIcon(new Request(iconUrl), { fetcher, cache });
+    expect(response.status).toBe(200);
+    expect(requests.length).toBeGreaterThan(0);
+  });
+
   it("rejects unsafe redirects, HTML masquerading as an image and oversized images", async () => {
     const redirected = mockFetch({ html: "<html/>", redirectTo: "http://127.0.0.1/admin" });
     const result = await handleSiteIcon(new Request(iconUrl), {
@@ -212,6 +249,7 @@ describe("site icon network policy", () => {
     expect(requests.length).toBe(0);
     const first = await handleSiteIcon(new Request(iconUrl), { fetcher, cache });
     expect(first.status).toBe(404);
+    expect(first.headers.get("Cache-Control")).toBe("public, max-age=900, s-maxage=900");
     const count = requests.length;
     expect((await handleSiteIcon(new Request(iconUrl), { fetcher, cache })).status).toBe(404);
     expect(requests.length).toBe(count);

@@ -5,7 +5,7 @@ import { isPublicHostnameSyntax } from "../shared/site-host.js";
  * Only hosts from an authenticated bookmark page may reach this endpoint.
  */
 const POSITIVE_TTL = 7 * 24 * 3600;
-const NEGATIVE_TTL = 12 * 3600;
+const NEGATIVE_TTL = 15 * 60;
 const MAX_HTML_BYTES = 96 * 1024;
 const MAX_MANIFEST_BYTES = 32 * 1024;
 const MAX_IMAGE_BYTES = 256 * 1024;
@@ -80,10 +80,11 @@ export function validateOutboundUrl(raw: string): URL | null {
 export async function readLimited(
   response: Response,
   maxBytes: number,
+  allowPrefix = false,
 ): Promise<Uint8Array | null> {
   if (!response.body) return null;
   const len = response.headers.get("Content-Length");
-  if (len && Number(len) > maxBytes) {
+  if (!allowPrefix && len && Number(len) > maxBytes) {
     await response.body.cancel().catch(() => {});
     return null;
   }
@@ -94,6 +95,15 @@ export async function readLimited(
     while (true) {
       const chunk = await reader.read();
       if (chunk.done) break;
+      const remaining = maxBytes - bytes;
+      if (allowPrefix && chunk.value.byteLength >= remaining) {
+        // HTML discovery needs only a bounded prefix. Cancel the rest, but
+        // retain complete icon/manifest links already present in the prefix.
+        chunks.push(chunk.value.slice(0, remaining));
+        bytes += remaining;
+        await reader.cancel().catch(() => {});
+        break;
+      }
       bytes += chunk.value.byteLength;
       if (bytes > maxBytes) {
         await reader.cancel().catch(() => {});
@@ -470,7 +480,7 @@ async function discoverSiteIcon(host: string, requester: Requester): Promise<Res
     fetched?.response.ok &&
     (fetched.response.headers.get("Content-Type") ?? "").toLowerCase().includes("text/html")
   ) {
-    const bytes = await readLimited(fetched.response, MAX_HTML_BYTES);
+    const bytes = await readLimited(fetched.response, MAX_HTML_BYTES, true);
     if (bytes) {
       const html = new TextDecoder().decode(bytes);
       candidates = htmlIconCandidates(html, fetched.url);
@@ -570,7 +580,12 @@ export async function handleSiteIcon(
   if (cache) {
     try {
       const found = await cache.match(cacheKey);
-      if (found)
+      // Do not retain failures written with the former 12-hour policy.
+      // Positive cache entries and current short-lived failures remain usable.
+      const oldFailure =
+        found?.status === 404 &&
+        Number(/s-maxage=(\d+)/.exec(found.headers.get("Cache-Control") ?? "")?.[1]) > NEGATIVE_TTL;
+      if (found && !oldFailure)
         return request.method === "HEAD"
           ? new Response(null, { status: found.status, headers: found.headers })
           : found;
