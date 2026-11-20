@@ -589,13 +589,15 @@ export class BookmarkDO extends DurableObject<Env> {
       .select({ id: bookmarkTags.bookmarkId })
       .from(bookmarkTags)
       .where(eq(bookmarkTags.tagId, tags.id));
-    const activeAssociations = this.db
-      .select({ id: bookmarkTags.bookmarkId })
+    // An uncorrelated IN subquery is evaluated once. A correlated join lets
+    // SQLite scan all active bookmarks again for every tag on each page.
+    const activeTagIds = this.db
+      .select({ id: bookmarkTags.tagId })
       .from(bookmarkTags)
       .innerJoin(bookmarks, eq(bookmarkTags.bookmarkId, bookmarks.id))
-      .where(and(eq(bookmarkTags.tagId, tags.id), eq(bookmarks.isArchived, false)));
+      .where(eq(bookmarks.isArchived, false));
     const inScope = or(
-      exists(options.includeArchived ? associations : activeAssociations),
+      options.includeArchived ? exists(associations) : inArray(tags.id, activeTagIds),
       options.includeUnused ? notExists(associations) : undefined,
     );
     const filter = and(
