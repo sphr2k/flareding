@@ -72,6 +72,10 @@ function env() {
       calls.push({ op: "setArchived", args: [id, archived] });
       return fixture;
     },
+    setArchivedBatch: async (ids: number[], archived: boolean) => {
+      calls.push({ op: "setArchivedBatch", args: [ids, archived] });
+      return ids.map((id) => ({ id, updated: id === 42 }));
+    },
     deleteBookmark: async (id: number) => {
       calls.push({ op: "deleteBookmark", args: [id] });
       return true;
@@ -196,7 +200,7 @@ describe("native MCP access boundary", () => {
 });
 
 describe("native MCP bookmark tools", () => {
-  it("registers nine tools with correct destructive annotations", async () => {
+  it("registers ten tools with correct destructive annotations", async () => {
     const { result: environment } = env();
     const { token, keys } = await signed();
     const response = await handleMcp(request("tools/list", {}, token), environment, context, keys);
@@ -208,6 +212,7 @@ describe("native MCP bookmark tools", () => {
       "create_bookmark",
       "update_bookmark",
       "archive_bookmark",
+      "archive_bookmarks",
       "delete_bookmark",
       "list_tags",
       "merge_tags",
@@ -252,6 +257,34 @@ describe("native MCP bookmark tools", () => {
     expect(
       (tags.result.structuredContent?.tags as Array<{ bookmark_count: number }>)[0]?.bookmark_count,
     ).toBe(4);
+  });
+
+  it("archives and restores bounded batches with per-ID results", async () => {
+    const { result: environment, calls } = env();
+    const { token, keys } = await signed();
+    const result = await tool(
+      "archive_bookmarks",
+      { ids: [42, 999], archived: false },
+      token,
+      keys,
+      environment,
+    );
+    expect(result.result.structuredContent?.results).toEqual([
+      { id: 42, updated: true },
+      { id: 999, updated: false },
+    ]);
+    expect(calls).toEqual([{ op: "setArchivedBatch", args: [[42, 999], false] }]);
+    for (const ids of [[], [0], Array.from({ length: 501 }, (_, i) => i + 1)]) {
+      const invalid = await tool(
+        "archive_bookmarks",
+        { ids, archived: true },
+        token,
+        keys,
+        environment,
+      );
+      expect(invalid.result.isError).toBe(true);
+    }
+    expect(calls).toHaveLength(1);
   });
 
   it("validates inputs and delegates all writes to existing DO RPC", async () => {

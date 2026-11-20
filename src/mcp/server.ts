@@ -148,6 +148,21 @@ export function createFlaredingMcp(env: Pick<Env, "BOOKMARKS">) {
   );
 
   server.registerTool(
+    "archive_bookmarks",
+    {
+      title: "Archive or restore bookmarks in batches",
+      description:
+        "Archive or unarchive up to 500 bookmark IDs. Each ID is processed independently in order; updated=false means not found unless an error is supplied. Duplicate IDs are processed repeatedly.",
+      inputSchema: z.object({ ids: z.array(id).min(1).max(500), archived: z.boolean() }),
+      outputSchema: z.object({
+        results: z.array(z.object({ id, updated: z.boolean(), error: z.string().optional() })),
+      }),
+      annotations: mutating,
+    },
+    async ({ ids, archived }) => ok({ results: await account.setArchivedBatch(ids, archived) }),
+  );
+
+  server.registerTool(
     "delete_bookmark",
     {
       title: "Permanently delete bookmark",

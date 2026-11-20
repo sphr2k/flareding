@@ -555,6 +555,18 @@ export class BookmarkDO extends DurableObject<Env> {
     return row ? toLinkding(row, tagNames(this.db, id)) : null;
   }
 
+  async setArchivedBatch(ids: number[], archived: boolean) {
+    const results: Array<{ id: number; updated: boolean; error?: string }> = [];
+    for (const id of ids) {
+      try {
+        results.push({ id, updated: (await this.setArchived(id, archived)) !== null });
+      } catch {
+        results.push({ id, updated: false, error: "Failed to update bookmark" });
+      }
+    }
+    return results;
+  }
+
   async deleteBookmark(id: number): Promise<boolean> {
     return (
       this.db
