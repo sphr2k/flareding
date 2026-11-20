@@ -454,6 +454,22 @@ try {
     bundleResults.body.results.map((bookmark) => bookmark.id),
     [activeForTags.body.id],
   );
+  const bundleSearch = await request("POST", "/api/bookmarks/search/", {
+    bundle: bundle.body.id,
+    query: "Synthetic",
+    tags: [spacedTagName],
+    view: "all",
+  });
+  expectStatus(bundleSearch, 200, "bundle with Flareding search");
+  assert.deepEqual(
+    bundleSearch.body.results.map((bookmark) => bookmark.id),
+    [activeForTags.body.id],
+  );
+  expectStatus(
+    await request("POST", "/api/bookmarks/search/", { bundle: 999999999 }),
+    404,
+    "unknown bundle",
+  );
   expectStatus(
     await request("PATCH", bundlePath, { name: "Renamed bundle" }),
     200,

@@ -45,6 +45,8 @@ describe("Flareding v1 multi-tag search contract", () => {
       false,
     );
     expect(flaredingV1BookmarkSearchInput.safeParse({ view: "invalid" }).success).toBe(false);
+    expect(flaredingV1BookmarkSearchInput.safeParse({ bundle: 0 }).success).toBe(false);
+    expect(flaredingV1BookmarkSearchInput.parse({ bundle: 42 }).bundle).toBe(42);
     expect(Object.keys(bookmarkPageInput.shape)).not.toContain("tags");
   });
 });

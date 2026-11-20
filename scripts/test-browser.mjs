@@ -31,6 +31,7 @@ for (const stream of [child.stdout, child.stderr]) {
   });
 }
 const created = [];
+let bundleId;
 const newTag = `browser-new-tag-${randomUUID()}`;
 const pageErrors = [];
 function stop() {
@@ -92,6 +93,13 @@ try {
     created.push((await response.json()).id);
   }
 
+  const bundleResponse = await api("POST", "/api/bundles/", {
+    name: "Synthetic collection with a long name for responsive layout",
+    all_tags: "typescript",
+  });
+  if (!bundleResponse.ok) throw new Error("Synthetic collection seed failed");
+  bundleId = (await bundleResponse.json()).id;
+
   browser = await chromium.launch({
     ...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH
       ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH }
@@ -129,6 +137,21 @@ try {
   await page.getByRole("button", { name: "Sign in" }).click();
   await page.locator('[role="gridcell"]').first().waitFor();
   await page.getByText("Synthetic bookmark 1").first().waitFor();
+  const collection = page.getByRole("button", { name: "Collection" });
+  await collection.focus();
+  await page.keyboard.press("Enter");
+  await page
+    .getByRole("option", { name: "Synthetic collection with a long name for responsive layout" })
+    .click();
+  await page.getByText("Synthetic bookmark 2", { exact: true }).waitFor();
+  await page.getByText("Synthetic bookmark 1", { exact: true }).waitFor({ state: "hidden" });
+  await page.setViewportSize({ width: 360, height: 900 });
+  if (await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1))
+    throw new Error("Collection picker overflows mobile");
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await collection.click();
+  await page.getByRole("option", { name: "All collections" }).click();
+  await page.getByText("Synthetic bookmark 1", { exact: true }).waitFor();
   // Unified search: asynchronous tag: suggestions, keyboard selection,
   // multi-tag AND, free-text and round-tripping bookmarked URL state.
   const globalSearch = page.getByRole("combobox", { name: "Search bookmarks" });
@@ -521,6 +544,7 @@ try {
   }
   process.exitCode = 1;
 } finally {
+  if (bundleId) await api("DELETE", `/api/bundles/${bundleId}/`).catch(() => {});
   for (const id of created) {
     await api("DELETE", `/api/bookmarks/${id}/`).catch(() => {});
   }

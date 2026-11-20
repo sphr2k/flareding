@@ -1,4 +1,5 @@
 import { openapi } from "@orpc/openapi";
+import { ORPCError } from "@orpc/server";
 import { procedure } from "../../base.js";
 import { paginationLinks } from "../../linkding/v1/pagination.js";
 import { withAbsoluteFavicon } from "../../linkding/v1/favicon-url.js";
@@ -11,7 +12,11 @@ export const flaredingV1Routes = {
     .input(flaredingV1BookmarkSearchInput)
     .output(flaredingV1BookmarkSearchOutput)
     .handler(async ({ context, input }) => {
-      const result = await context.env.BOOKMARKS.getByName("default").listBookmarks({
+      const account = context.env.BOOKMARKS.getByName("default");
+      if (input.bundle !== undefined && !(await account.getBundle(input.bundle)))
+        throw new ORPCError("NOT_FOUND", { message: "Bundle not found" });
+      const result = await account.listBookmarks({
+        bundle: input.bundle,
         limit: input.limit,
         offset: input.offset,
         q: input.query,

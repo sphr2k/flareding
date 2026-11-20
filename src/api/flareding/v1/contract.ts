@@ -6,6 +6,7 @@ export const flaredingV1BookmarkSearchInput = z
   .object({
     query: z.string().trim().max(1000).default(""),
     tags: z.array(z.string().trim().min(1).max(120)).max(12).default([]),
+    bundle: z.number().int().positive().optional(),
     view: z.enum(["all", "unread", "archived"]).default("all"),
     limit: z.number().int().min(1).max(100).default(60),
     offset: z.number().int().min(0).default(0),

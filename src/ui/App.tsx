@@ -3,6 +3,7 @@ import { DialogContainer } from "@react-spectrum/s2/Dialog";
 import { AlertDialog } from "@react-spectrum/s2/AlertDialog";
 import { CardView } from "@react-spectrum/s2/CardView";
 import { InlineAlert, Heading, Content } from "@react-spectrum/s2/InlineAlert";
+import { Picker, PickerItem } from "@react-spectrum/s2/Picker";
 import { Provider } from "@react-spectrum/s2/Provider";
 import { StatusLight } from "@react-spectrum/s2/StatusLight";
 import { TextField, type TextFieldRef } from "@react-spectrum/s2/TextField";
@@ -47,6 +48,7 @@ async function getBookmarks(
   view: BookmarkView,
   tags: string[],
   offset: number,
+  bundle: number | null,
 ): Promise<BookmarkPage> {
   const response = await fetch("/api/bookmarks/search/", {
     method: "POST",
@@ -55,6 +57,7 @@ async function getBookmarks(
     body: JSON.stringify({
       query: pendingTag(query) === null ? query : stripPendingTag(query),
       tags,
+      ...(bundle === null ? {} : { bundle }),
       view,
       limit: 60,
       offset,
@@ -63,6 +66,24 @@ async function getBookmarks(
   if (!response.ok)
     throw new Error(response.status === 401 ? "Session expired" : "Could not load bookmarks");
   return flaredingV1BookmarkSearchOutput.parse(await response.json());
+}
+
+interface Bundle {
+  id: number;
+  name: string;
+}
+
+async function getBundles(): Promise<Bundle[]> {
+  const bundles: Bundle[] = [];
+  for (let offset = 0; ; offset += 100) {
+    const response = await fetch(`/api/bundles/?limit=100&offset=${offset}`, {
+      credentials: "same-origin",
+    });
+    if (!response.ok) throw new Error("Could not load collections");
+    const page = (await response.json()) as { count: number; results: Bundle[] };
+    bundles.push(...page.results);
+    if (!page.results.length || bundles.length >= page.count) return bundles;
+  }
 }
 
 async function sendBookmark(
@@ -193,6 +214,8 @@ function BookmarkManager({
     return () => media.removeEventListener("change", sync);
   }, []);
 
+  const [bundle, setBundle] = useState<number | null>(null);
+  const bundles = useQuery({ queryKey: ["bundles"], queryFn: getBundles });
   const [adding, setAdding] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [editing, setEditing] = useState<BookmarkDTO | null>(null);
@@ -200,8 +223,8 @@ function BookmarkManager({
   const [deleteError, setDeleteError] = useState("");
 
   const { data, isPending, error } = useQuery({
-    queryKey: ["bookmarks", debouncedSearch, view, tagFilters, offset],
-    queryFn: () => getBookmarks(debouncedSearch, view, tagFilters, offset),
+    queryKey: ["bookmarks", debouncedSearch, view, tagFilters, offset, bundle],
+    queryFn: () => getBookmarks(debouncedSearch, view, tagFilters, offset, bundle),
     staleTime: 15_000,
   });
 
@@ -347,6 +370,29 @@ function BookmarkManager({
             isNarrow={isNarrow}
             count={data?.count}
           />
+          {bundles.error && (
+            <InlineAlert variant="negative">
+              <Heading>Could not load collections</Heading>
+              <Content>{bundles.error.message}</Content>
+            </InlineAlert>
+          )}
+          {!!bundles.data?.length && (
+            <Picker
+              label="Collection"
+              value={bundle === null ? "all" : String(bundle)}
+              onChange={(key) => {
+                setBundle(key === "all" ? null : Number(key));
+                setOffset(0);
+              }}
+            >
+              <PickerItem id="all">All collections</PickerItem>
+              {bundles.data.map((item) => (
+                <PickerItem key={item.id} id={String(item.id)}>
+                  {item.name}
+                </PickerItem>
+              ))}
+            </Picker>
+          )}
           {deleteError && (
             <InlineAlert variant="negative">
               <Heading>Could not delete bookmark</Heading>
