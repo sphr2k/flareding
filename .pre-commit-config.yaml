@@ -1,0 +1,18 @@
+repos:
+  - repo: local
+    hooks:
+      - id: vite-plus-format
+        name: Vite+ format
+        entry: bunx vp fmt --check
+        language: system
+        pass_filenames: false
+      - id: vite-plus-lint
+        name: Vite+ lint
+        entry: bunx vp lint
+        language: system
+        pass_filenames: false
+      - id: bun-typecheck
+        name: TypeScript check
+        entry: bun check
+        language: system
+        pass_filenames: false
