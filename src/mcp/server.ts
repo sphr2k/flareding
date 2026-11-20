@@ -1,7 +1,13 @@
 import { McpServer } from "@modelcontextprotocol/server";
 import { createMcpHandler } from "agents/mcp/server";
 import { z } from "zod";
-import { bookmarkCreate, bookmarkPatch, bookmarkDto, tagDto } from "../api/linkding/v1/contract.js";
+import {
+  bookmarkCreate,
+  bookmarkPatch,
+  bookmarkDto,
+  tagDto,
+  bundleCreate,
+} from "../api/linkding/v1/contract.js";
 import { authorizeMcp } from "./access.js";
 import type { Env } from "../env.js";
 
@@ -20,6 +26,20 @@ const tagsResult = z.object({
   count: z.number().int().nonnegative(),
   tags: z.array(tagDto.extend({ bookmark_count: z.number().int().nonnegative() })),
 });
+const bundleDto = z.object({
+  id,
+  name: z.string(),
+  search: z.string(),
+  any_tags: z.string(),
+  all_tags: z.string(),
+  excluded_tags: z.string(),
+  filter_unread: z.enum(["yes", "no", "off"]),
+  filter_shared: z.enum(["yes", "no", "off"]),
+  order: z.number().int(),
+  date_created: z.iso.datetime(),
+  date_modified: z.iso.datetime(),
+});
+const bundleResult = z.object({ bundle: bundleDto, created: z.boolean() });
 const mergeResult = z.object({
   target: z.string(),
   target_created: z.boolean(),
@@ -173,6 +193,52 @@ export function createFlaredingMcp(env: Pick<Env, "BOOKMARKS">) {
       annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
     },
     async ({ id }) => ok({ deleted: await account.deleteBookmark(id) }),
+  );
+
+  server.registerTool(
+    "list_bundles",
+    {
+      title: "List saved bookmark collections (Linkding bundles)",
+      description:
+        "List saved Linkding bundles in order. Bundles are virtual collections defined by tag search filters, independent of bookmark unread/archive status.",
+      inputSchema: z.object({
+        limit: z.number().int().min(1).max(100).default(50),
+        offset: page.offset,
+      }),
+      outputSchema: z.object({
+        count: z.number().int().nonnegative(),
+        bundles: z.array(bundleDto),
+      }),
+      annotations: readOnly,
+    },
+    async ({ limit, offset }) => {
+      const result = await account.listBundles(limit, offset);
+      return ok({ count: result.count, bundles: result.results });
+    },
+  );
+
+  server.registerTool(
+    "upsert_bundle",
+    {
+      title: "Create or update a bookmark collection (Linkding bundle)",
+      description:
+        "Create a saved tag-filter bundle, or update an existing bundle with the same name (case-insensitive), retaining its order. any_tags/all_tags/excluded_tags use space-separated tag names; quote tags containing spaces. This does not alter bookmarks, tags, unread flags or archive state.",
+      inputSchema: bundleCreate,
+      outputSchema: bundleResult,
+      annotations: mutating,
+    },
+    async (input) => {
+      const existing = (await account.listBundles(1000, 0)).results.find(
+        (bundle) => bundle.name.toLowerCase() === input.name.toLowerCase(),
+      );
+      if (existing) {
+        const updated = await account.updateBundle(existing.id, input);
+        return updated
+          ? ok({ bundle: updated, created: false })
+          : error("Bundle disappeared during update");
+      }
+      return ok({ bundle: await account.createBundle(input), created: true });
+    },
   );
 
   server.registerTool(

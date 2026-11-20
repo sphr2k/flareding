@@ -23,6 +23,19 @@ const fixture = {
   favicon_url: null,
   preview_image_url: null,
 };
+const bundleFixture = {
+  id: 7,
+  name: "Reading List",
+  search: "",
+  any_tags: "2read",
+  all_tags: "",
+  excluded_tags: "",
+  filter_unread: "off",
+  filter_shared: "off",
+  order: 0,
+  date_created: fixture.date_added,
+  date_modified: fixture.date_added,
+};
 const context = { waitUntil: (_promise: Promise<unknown>) => {} } as ExecutionContext;
 
 function request(method: string, params: object = {}, jwt?: string) {
@@ -79,6 +92,18 @@ function env() {
     deleteBookmark: async (id: number) => {
       calls.push({ op: "deleteBookmark", args: [id] });
       return true;
+    },
+    listBundles: async (limit: number, offset: number) => {
+      calls.push({ op: "listBundles", args: [limit, offset] });
+      return { count: 1, results: [bundleFixture] };
+    },
+    updateBundle: async (id: number, input: object) => {
+      calls.push({ op: "updateBundle", args: [id, input] });
+      return { ...bundleFixture, ...input };
+    },
+    createBundle: async (input: object) => {
+      calls.push({ op: "createBundle", args: [input] });
+      return { ...bundleFixture, id: 8, ...input };
     },
     listMcpTags: async (input: object) => {
       calls.push({ op: "listMcpTags", args: [input] });
@@ -200,7 +225,7 @@ describe("native MCP access boundary", () => {
 });
 
 describe("native MCP bookmark tools", () => {
-  it("registers ten tools with correct destructive annotations", async () => {
+  it("registers twelve tools with correct destructive annotations", async () => {
     const { result: environment } = env();
     const { token, keys } = await signed();
     const response = await handleMcp(request("tools/list", {}, token), environment, context, keys);
@@ -214,6 +239,8 @@ describe("native MCP bookmark tools", () => {
       "archive_bookmark",
       "archive_bookmarks",
       "delete_bookmark",
+      "list_bundles",
+      "upsert_bundle",
       "list_tags",
       "merge_tags",
       "delete_tags",
@@ -324,6 +351,50 @@ describe("native MCP bookmark tools", () => {
     );
     expect(bad.result.isError).toBe(true);
     expect(calls).toHaveLength(4);
+  });
+});
+
+describe("native MCP Linkding bundles", () => {
+  it("lists existing bundles and updates a matching bundle without creating duplicates", async () => {
+    const { result: environment, calls } = env();
+    const { token, keys } = await signed();
+    const list = await tool("list_bundles", {}, token, keys, environment);
+    expect(list.result.structuredContent?.count).toBe(1);
+    expect(list.result.structuredContent?.bundles).toEqual([bundleFixture]);
+
+    const updated = await tool(
+      "upsert_bundle",
+      { name: "Reading List", any_tags: "2read", search: "" },
+      token,
+      keys,
+      environment,
+    );
+    expect(updated.result.structuredContent?.created).toBe(false);
+    expect(calls.map((call) => call.op)).toEqual(["listBundles", "listBundles", "updateBundle"]);
+    expect(calls[2]?.args).toMatchObject([7, { name: "Reading List", any_tags: "2read" }]);
+    const invalid = await tool("upsert_bundle", { name: "" }, token, keys, environment);
+    expect(invalid.result.isError).toBe(true);
+    expect(calls).toHaveLength(3);
+  });
+
+  it("creates a new watchlist with OR semantics and no unread filter", async () => {
+    const { result: environment, calls } = env();
+    const { token, keys } = await signed();
+    const input = {
+      name: "Watchlist",
+      search: "",
+      any_tags:
+        "2watch 2watch-series 2watch-documentary 2watch-movies 2watch-series-german 2watch-tv",
+      all_tags: "",
+      excluded_tags: "",
+      filter_unread: "off",
+      filter_shared: "off",
+    };
+    const created = await tool("upsert_bundle", input, token, keys, environment);
+    expect(created.result.structuredContent?.created).toBe(true);
+    expect(created.result.structuredContent?.bundle).toMatchObject({ name: "Watchlist" });
+    expect(calls.map((call) => call.op)).toEqual(["listBundles", "createBundle"]);
+    expect(calls[1]?.args).toMatchObject([input]);
   });
 });
 
