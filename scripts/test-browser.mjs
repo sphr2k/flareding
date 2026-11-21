@@ -145,7 +145,9 @@ try {
     .click();
   await page.getByText("Synthetic bookmark 2", { exact: true }).waitFor();
   await page.getByText("Synthetic bookmark 1", { exact: true }).waitFor({ state: "hidden" });
+  await page.getByRole("listbox").waitFor({ state: "hidden" });
   await page.setViewportSize({ width: 360, height: 900 });
+  await page.getByRole("tablist", { name: "Bookmark collections" }).waitFor();
   if (await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1))
     throw new Error("Collection picker overflows mobile");
   await page.setViewportSize({ width: 1440, height: 900 });
