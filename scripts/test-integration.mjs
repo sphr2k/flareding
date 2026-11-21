@@ -395,6 +395,19 @@ try {
     tag_names: [sharedTagName, activeTagName, spacedTagName],
   });
   expectStatus(activeForTags, 201, "active synthetic bookmark for tags");
+  const fuzzySeed = await request("POST", "/api/bookmarks/", {
+    url: `https://example.com/fuzzy-${randomUUID()}`,
+    tag_names: ["rec", "recipe", "active-directory", "reception"],
+  });
+  expectStatus(fuzzySeed, 201, "fuzzy tag seed");
+  const fuzzyTags = await request("GET", "/api/tags/?q=rec&fuzzy=true&limit=2");
+  expectStatus(fuzzyTags, 200, "ranked fuzzy tags");
+  assert.equal(fuzzyTags.body.results[0].name, "rec");
+  assert.ok(fuzzyTags.body.results[1].name.startsWith("rec"));
+  const fuzzySecondPage = await request("GET", "/api/tags/?q=rec&fuzzy=true&limit=2&offset=2");
+  assert.equal(fuzzySecondPage.body.results[0].name, "recipe");
+  const typoTags = await request("GET", "/api/tags/?q=recipf&fuzzy=true");
+  assert.ok(typoTags.body.results.some((tag) => tag.name === "recipe"));
   const archivedForTags = await request("POST", "/api/bookmarks/", {
     url: archiveUrl,
     title: "Synthetic archived",

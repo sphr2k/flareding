@@ -36,10 +36,8 @@ export function UnifiedSearch({ query, onQueryChange, tags, onTagsChange, search
     staleTime: 60_000,
   });
 
-  const liveFragment = rawFragment?.trim().toLocaleLowerCase() ?? "";
   const options = (suggestions.data?.results ?? [])
     .filter((item) => !tags.includes(item.name))
-    .filter((item) => item.name.toLocaleLowerCase().includes(liveFragment))
     .map(({ name }) => ({ id: name, name }));
 
   function addTags(next: string[]) {

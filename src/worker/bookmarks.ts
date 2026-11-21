@@ -1,3 +1,4 @@
+import Fuse from "fuse.js";
 import { DurableObject } from "cloudflare:workers";
 import { and, asc, desc, eq, exists, gt, inArray, notExists, or, sql, type SQL } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/durable-sqlite";
@@ -583,6 +584,7 @@ export class BookmarkDO extends DurableObject<Env> {
     q?: string;
     includeArchived: boolean;
     includeUnused: boolean;
+    fuzzy?: boolean;
   }): Promise<{ count: number; results: TagDTO[] }> {
     const term = options.q?.trim();
     const associations = this.db
@@ -600,6 +602,23 @@ export class BookmarkDO extends DurableObject<Env> {
       options.includeArchived ? exists(associations) : inArray(tags.id, activeTagIds),
       options.includeUnused ? notExists(associations) : undefined,
     );
+    if (options.fuzzy && term) {
+      const candidates = this.db.select().from(tags).where(inScope).orderBy(tags.name).all();
+      const matches = new Fuse(candidates, {
+        keys: ["name"],
+        threshold: 0.35,
+        distance: 100,
+        ignoreDiacritics: true,
+      }).search(term);
+      return {
+        count: matches.length,
+        results: matches.slice(options.offset, options.offset + options.limit).map(({ item }) => ({
+          id: item.id,
+          name: item.name,
+          date_added: item.createdAt.toISOString(),
+        })),
+      };
+    }
     const filter = and(
       term ? sql`instr(lower(${tags.name}), lower(${term})) > 0` : undefined,
       inScope,

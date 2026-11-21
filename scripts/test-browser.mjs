@@ -167,11 +167,11 @@ try {
     const id = input.getAttribute("aria-activedescendant");
     return id ? document.getElementById(id)?.textContent?.trim() : null;
   });
-  if (focusedOption !== "cloudflare")
+  if (focusedOption !== "docs")
     throw new Error("Native option highlight unexpected: " + focusedOption);
   await globalSearch.press("Enter");
   await page.waitForFunction(() => new URL(location.href).searchParams.getAll("tag").length === 1);
-  if (!new URL(page.url()).searchParams.getAll("tag").includes("cloudflare"))
+  if (!new URL(page.url()).searchParams.getAll("tag").includes("docs"))
     throw new Error("Enter did not select the highlighted Spectrum suggestion");
   await globalSearch.fill("");
   await globalSearch.press("Backspace");

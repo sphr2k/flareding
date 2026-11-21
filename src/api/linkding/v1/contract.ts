@@ -94,6 +94,10 @@ export const pageInput = z.object({
 });
 
 export const tagPageInput = pageInput.extend({
+  fuzzy: z
+    .enum(["false", "true"])
+    .default("false")
+    .transform((value) => value === "true"),
   include_archived: z
     .enum(["false", "true"])
     .default("false")

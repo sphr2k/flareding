@@ -2,7 +2,12 @@ import { tagPageOutput } from "../../api/linkding/v1/contract.js";
 
 /** Typed, runtime-validated client for the tag suggestion endpoint. */
 export async function getActiveTagSuggestions(query: string, signal?: AbortSignal) {
-  const params = new URLSearchParams({ q: query, limit: "100", include_archived: "false" });
+  const params = new URLSearchParams({
+    q: query,
+    limit: "100",
+    include_archived: "false",
+    fuzzy: "true",
+  });
   const response = await fetch(`/api/tags/?${params}`, {
     signal,
     credentials: "same-origin",
