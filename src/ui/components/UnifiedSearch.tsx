@@ -78,8 +78,19 @@ export function UnifiedSearch({ query, onQueryChange, tags, onTagsChange, search
         maxWidth: 752,
         minWidth: 0,
       })}
+      onKeyDownCapture={(event) => {
+        if (event.target !== searchRef.current?.getInputElement()) return;
+        if (
+          event.key === "Enter" &&
+          !searchRef.current?.getInputElement()?.getAttribute("aria-activedescendant") &&
+          rawFragment?.trim()
+        ) {
+          event.preventDefault();
+          event.stopPropagation();
+          selectTag(rawFragment.trim());
+        }
+      }}
       onKeyDown={(event) => {
-        // Delegate Enter/ArrowDown/Escape entirely to native Spectrum ComboBox.
         if (event.target !== searchRef.current?.getInputElement()) return;
         if (event.key === "Backspace" && !query && tags.length > 0) {
           event.preventDefault();

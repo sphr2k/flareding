@@ -50,13 +50,14 @@ async function getBookmarks(
   offset: number,
   bundle: number | null,
 ): Promise<BookmarkPage> {
+  const fragment = pendingTag(query);
   const response = await fetch("/api/bookmarks/search/", {
     method: "POST",
     credentials: "same-origin",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      query: pendingTag(query) === null ? query : stripPendingTag(query),
-      tags,
+      query: fragment === null ? query : stripPendingTag(query),
+      tags: fragment?.trim() ? [...new Set([...tags, fragment.trim()])] : tags,
       ...(bundle === null ? {} : { bundle }),
       view,
       limit: 60,

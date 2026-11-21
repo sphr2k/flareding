@@ -176,8 +176,9 @@ try {
   await page.waitForFunction(() => !new URL(location.href).searchParams.has("tag"));
 
   await globalSearch.fill("tag:docs");
+  await page.getByText("Synthetic bookmark 2", { exact: true }).waitFor();
+  await page.getByText("Synthetic bookmark 1", { exact: true }).waitFor({ state: "hidden" });
   await page.getByRole("option", { name: "docs", exact: true }).waitFor();
-  await globalSearch.press("ArrowDown");
   await globalSearch.press("Enter");
   await page.waitForFunction(() =>
     new URL(location.href).searchParams.getAll("tag").includes("docs"),
